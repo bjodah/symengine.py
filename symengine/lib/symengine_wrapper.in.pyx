@@ -278,10 +278,10 @@ def sympy2symengine(a, raise_error=False):
     """
     import sympy
     from sympy.core.function import AppliedUndef as sympy_AppliedUndef
-    if isinstance(a, sympy.Symbol):
+    if isinstance(a, sympy.Dummy):
+        return Dummy(a.name, a.dummy_index)
+    elif isinstance(a, sympy.Symbol):
         return Symbol(a.name)
-    elif isinstance(a, sympy.Dummy):
-        return Dummy(a.name)
     elif isinstance(a, sympy.Mul):
         return mul(*[sympy2symengine(x, raise_error) for x in a.args])
     elif isinstance(a, sympy.Add):
@@ -1337,15 +1337,18 @@ cdef class Symbol(Expr):
 
 cdef class Dummy(Symbol):
 
-    def __init__(Basic self, name=None, *args, **kwargs):
-        if name is None:
-            self.thisptr = symengine.make_rcp_Dummy()
+    def __init__(Basic self, name=None, dummy_index=None, *args, **kwargs):
+        if dummy_index is None:
+            if name is None:
+                self.thisptr = symengine.make_rcp_Dummy()
+            else:
+                self.thisptr = symengine.make_rcp_Dummy(name.encode("utf-8"))
         else:
-            self.thisptr = symengine.make_rcp_Dummy(name.encode("utf-8"))
+            self.thisptr = symengine.make_rcp_Dummy(name.encode("utf-8"), dummy_index)
 
     @property
     def name(self):
-        return self.__str__()[1:]
+        return self.__str__()
 
     def _sympy_(self):
         import sympy
