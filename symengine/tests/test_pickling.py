@@ -63,7 +63,7 @@ def _check_pickling_roundtrip(arg):
     s2 = pickle.dumps(arg)
     arg2 = pickle.loads(s2)
     assert arg == arg2
-    s3 = pickle.dump(arg2)
+    s3 = pickle.dumps(arg2)
     arg3 = pickle.loads(s3)
     assert arg == arg3
 

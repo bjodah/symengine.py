@@ -1344,7 +1344,8 @@ cdef class Dummy(Symbol):
             else:
                 self.thisptr = symengine.make_rcp_Dummy(name.encode("utf-8"))
         else:
-            self.thisptr = symengine.make_rcp_Dummy(name.encode("utf-8"), dummy_index)
+            cdef size_t index = dummy_index
+            self.thisptr = symengine.make_rcp_Dummy(name.encode("utf-8"), index)
 
     @property
     def name(self):
