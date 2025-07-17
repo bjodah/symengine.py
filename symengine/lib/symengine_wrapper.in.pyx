@@ -1301,10 +1301,10 @@ cdef class Symbol(Expr):
         return sympy.Symbol(str(self))
 
     def __reduce__(self):
-        if type(self) == Symbol:
+        if type(self) in (Symbol, Dummy):
             return Basic.__reduce__(self)
         else:
-            raise NotImplementedError("pickling for Symbol subclass not implemented")
+            raise NotImplementedError("pickling for Symbol subclass or Dummy subclass not implemented")
 
     def _sage_(self):
         import sage.all as sage
