@@ -1338,13 +1338,14 @@ cdef class Symbol(Expr):
 cdef class Dummy(Symbol):
 
     def __init__(Basic self, name=None, dummy_index=None, *args, **kwargs):
+        cdef size_t index
         if dummy_index is None:
             if name is None:
                 self.thisptr = symengine.make_rcp_Dummy()
             else:
                 self.thisptr = symengine.make_rcp_Dummy(name.encode("utf-8"))
         else:
-            cdef size_t index = dummy_index
+            index = dummy_index
             self.thisptr = symengine.make_rcp_Dummy(name.encode("utf-8"), index)
 
     @property
