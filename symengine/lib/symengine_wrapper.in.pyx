@@ -1307,7 +1307,7 @@ cdef class Symbol(Expr):
         if type(self) in (Symbol, Dummy):
             return Basic.__reduce__(self)
         else:
-            raise NotImplementedError("pickling for Symbol subclass or Dummy subclass not implemented")
+            raise NotImplementedError("pickling for subclass of Symbol or Dummy not implemented")
 
     def _sage_(self):
         import sage.all as sage
@@ -1350,10 +1350,6 @@ cdef class Dummy(Symbol):
         else:
             index = dummy_index
             self.thisptr = symengine.make_rcp_Dummy(name.encode("utf-8"), index)
-
-    @property
-    def name(self):
-        return self.__str__()
 
     def _sympy_(self):
         import sympy

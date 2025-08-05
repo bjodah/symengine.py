@@ -160,7 +160,6 @@ def test_dummy():
     assert xdummy1.name == 'x'
     assert xdummy2.name == 'x'
 
-
     assert x1 == x2
     assert x1 != xdummy1
     assert xdummy1 == (xdummy1 + 1) - 1

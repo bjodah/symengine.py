@@ -71,3 +71,4 @@ def test_pickling_roundtrip():
     x, y, z = symbols('x y z')
     _check_pickling_roundtrip(x+y)
     _check_pickling_roundtrip(Dummy('d'))
+    _check_pickling_roundtrip(Dummy('d') - z)

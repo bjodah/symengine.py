@@ -834,10 +834,10 @@ def test_conv_large_integers():
         c = a._sympy_()
         d = sympify(c)
 
+
 def _check_sympy_roundtrip(arg):
     arg_sy1 = sympy.sympify(arg)
     arg_se2 = sympify(arg_sy1)
-    print(f"{type(arg)=} {type(arg_se2)=}")
     assert arg == arg_se2
     arg_sy2 = sympy.sympify(arg_se2)
     assert arg_sy2 == arg_sy1
