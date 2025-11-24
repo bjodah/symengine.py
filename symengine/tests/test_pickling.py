@@ -31,11 +31,17 @@ class MySymbol(MySymbolBase):
 def test_pysymbol():
     a = MySymbol("hello", attr=1)
     b = pickle.loads(pickle.dumps(a + 2)) - 2
+    c = MySymbol("hello", attr=-1)
     try:
         assert a == b
+        assert type(a) == type(b)
+        assert a.attr == 1
+        assert b.attr == 1
+        assert b != c
     finally:
         a._unsafe_reset()
         b._unsafe_reset()
+        c._unsafe_reset()
 
     a = MySymbolBase("hello", attr=1)
     try:
