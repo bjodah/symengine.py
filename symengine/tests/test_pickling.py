@@ -22,8 +22,15 @@ class MySymbolBase(Symbol):
             return False
         return self.name == other.name and self.attr == other.attr
 
+    def __ne__(self, other):
+        return not (self == other)
+
+    def __hash__(self, other):
+        return hash((self.__class__.__name__, self.name, self.attr))
+
 
 class MySymbol(MySymbolBase):
+
     def __reduce__(self):
         return (self.__class__, (self.name, self.attr))
 
