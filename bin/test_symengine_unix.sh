@@ -4,6 +4,8 @@ export MAKEFLAGS="-j2"
 
 git clone https://github.com/symengine/symengine symengine-cpp
 cd symengine-cpp
+git config --add remote.origin.fetch '+refs/pull/*/head:refs/remotes/origin/pr/*'
+git fetch
 export SOURCE_DIR=`pwd`
 git checkout `cat ../symengine_version.txt`
 cd ..

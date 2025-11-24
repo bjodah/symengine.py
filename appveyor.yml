@@ -74,6 +74,8 @@ install:
 
 - set /p commit=<symengine_version.txt
 - cd symengine-cpp
+- git config --add remote.origin.fetch "+refs/pull/*/head:refs/remotes/origin/pr/*"
+- git fetch
 - git checkout %commit%
 - mkdir build
 - cd build
