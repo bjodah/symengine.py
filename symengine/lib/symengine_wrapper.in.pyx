@@ -1557,9 +1557,6 @@ cdef class BooleanFalse(BooleanAtom):
     def _sage_(self):
         return False
 
-    def __nonzero__(self):
-        return False
-
     def __bool__(self):
         return False
 

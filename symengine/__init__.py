@@ -1,4 +1,5 @@
 import os
+
 import sys
 
 if sys.platform == 'win32' \
@@ -64,7 +65,7 @@ else:
         raise AttributeError(f"module 'symengine' has no attribute '{name}'")
 
 
-__version__ = "0.14.1"
+from ._version import __version__
 
 
 # To not expose internals
