@@ -1,3 +1,5 @@
+import pytest
+
 from symengine import (
     Symbol, groebner_basis, GroebnerBasis, Integer, Rational, groebner,
     FiniteSet, EmptySet, sympify,
@@ -14,6 +16,13 @@ def _same_ideal(A, B, gens, order):
     A, B = list(A), list(B)
     return (all(normal_form(p, B, gens, order=order) == 0 for p in A) and
             all(normal_form(p, A, gens, order=order) == 0 for p in B))
+
+
+def _assert_groebner(G, gens, order, modulus=0):
+    """Every basis we compute must actually be a Groebner basis. This is the
+    single assertion that would have caught the MoGVW defect."""
+    assert len(G) > 0
+    assert is_groebner(list(G), gens, order=order, modulus=modulus) is True
 
 
 def test_groebner_basic_lex():
@@ -137,7 +146,8 @@ def test_groebner_katsura4():
     f3 = 2*x0*x1 + 2*x1*x2 + 2*x2*x3 - x1
     f4 = x1**2 + 2*x0*x2 + 2*x1*x3 - x2
     G = groebner_basis([f1, f2, f3, f4], x0, x1, x2, x3, order='degrevlex')
-    assert len(G) > 0
+    _assert_groebner(G, [x0, x1, x2, x3], 'degrevlex')
+    assert len(G) == 7
 
 
 def test_groebner_cyclic4():
@@ -147,7 +157,8 @@ def test_groebner_cyclic4():
     f3 = a*b*c + b*c*d + c*d*a + d*a*b
     f4 = a*b*c*d - 1
     G = groebner_basis([f1, f2, f3, f4], a, b, c, d, order='degrevlex')
-    assert len(G) > 0
+    _assert_groebner(G, [a, b, c, d], 'degrevlex')
+    assert len(G) == 7
 
 
 def test_groebner_algorithm_consistency():
@@ -297,7 +308,7 @@ def test_groebner_gf():
     f1 = x**2 + y**2 - 1
     f2 = x**2 - y
     G = groebner_basis([f1, f2], x, y, modulus=7, order='degrevlex')
-    assert len(G) > 0
+    _assert_groebner(G, [x, y], 'degrevlex', modulus=7)
 
 
 def test_groebner_stats():
@@ -351,6 +362,66 @@ def test_groebner_cross_algorithm_same_ideal():
     G_mogvw = groebner_basis([f1, f2], x, y, order='degrevlex', algorithm='mogvw')
     assert _same_ideal(G_buch, G_f5b, [x, y], order='degrevlex')
     assert _same_ideal(G_buch, G_mogvw, [x, y], order='degrevlex')
+
+
+def _katsura4():
+    x0, x1, x2, x3 = Symbol('x0'), Symbol('x1'), Symbol('x2'), Symbol('x3')
+    f1 = x0 + 2*x1 + 2*x2 + 2*x3 - 1
+    f2 = x0**2 + 2*x1**2 + 2*x2**2 + 2*x3**2 - x0
+    f3 = 2*x0*x1 + 2*x1*x2 + 2*x2*x3 - x1
+    f4 = x1**2 + 2*x0*x2 + 2*x1*x3 - x2
+    return [f1, f2, f3, f4], [x0, x1, x2, x3]
+
+
+@pytest.mark.parametrize("algorithm", ["buchberger", "f5b"])
+def test_groebner_katsura4_correct(algorithm):
+    polys, gens = _katsura4()
+    G = groebner_basis(polys, *gens, order='degrevlex', algorithm=algorithm)
+    _assert_groebner(G, gens, 'degrevlex')
+    assert len(G) == 7
+
+
+@pytest.mark.xfail(strict=True,
+                   reason="MoGVW returns an incomplete basis on katsura4 "
+                          "(see 06-REVIEW-REPORT.md #1; fixed in Phase 03)")
+def test_groebner_katsura4_mogvw_xfail():
+    polys, gens = _katsura4()
+    G = groebner_basis(polys, *gens, order='degrevlex', algorithm='mogvw')
+    _assert_groebner(G, gens, 'degrevlex')
+
+
+@pytest.mark.xfail(strict=True,
+                   reason="AUTO selects MoGVW for GF(p)+grlex and returns an "
+                          "incomplete basis (06-REVIEW-REPORT.md #1; Phase 02 "
+                          "stops AUTO picking MoGVW, Phase 03 fixes MoGVW)")
+def test_groebner_katsura4_gf_grlex_auto_correct():
+    polys, gens = _katsura4()
+    G = groebner_basis(polys, *gens, order='grlex', modulus=32003)
+    _assert_groebner(G, gens, 'grlex', modulus=32003)
+
+
+def test_groebner_fractional_field_parametric():
+    x, y = Symbol('x'), Symbol('y')
+    C1, C2, C3 = Symbol('C1'), Symbol('C2'), Symbol('C3')
+    polys = [C1*x*y + C2*y**2 - 1, x**2 - C3*y]
+    gens = [x, y]
+    for algorithm in ('auto', 'buchberger', 'f5b'):
+        G = groebner_basis(polys, *gens, order='degrevlex', algorithm=algorithm)
+        assert len(G) > 0
+        assert is_groebner(list(G), gens, order='degrevlex') is True
+    G_buch = groebner_basis(polys, *gens, order='degrevlex', algorithm='buchberger')
+    G_f5b = groebner_basis(polys, *gens, order='degrevlex', algorithm='f5b')
+    assert _same_ideal(G_buch, G_f5b, gens, order='degrevlex')
+
+
+@pytest.mark.xfail(strict=True,
+                   reason="MoGVW disagrees with buchberger on katsura4 "
+                          "(06-REVIEW-REPORT.md #1; Phase 03)")
+def test_groebner_cross_algorithm_katsura4_mogvw_xfail():
+    polys, gens = _katsura4()
+    G_buch = groebner_basis(polys, *gens, order='degrevlex', algorithm='buchberger')
+    G_mogvw = groebner_basis(polys, *gens, order='degrevlex', algorithm='mogvw')
+    assert _same_ideal(G_buch, G_mogvw, gens, order='degrevlex')
 
 
 def test_normal_form_ideal_membership():
@@ -464,7 +535,6 @@ def test_groebner_extended_stats():
 
 
 def test_compare_with_sympy():
-    import pytest
     sympy = pytest.importorskip("sympy")
     sx, sy, sz = sympy.symbols('x y z')
     x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
