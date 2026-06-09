@@ -39,3 +39,6 @@ editable.mode = "inplace"
 
 [tool.setuptools_scm]  # Section required
 write_to = "symengine/_version.py"
+
+[tool.pytest.ini_options]
+markers = ["slow: long-running Groebner corpus systems (deselect with -m 'not slow')"]

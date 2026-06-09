@@ -1,6 +1,8 @@
 install(
   FILES
     __init__.py
+    _gen_corpus.py
+    groebner_corpus.py
     test_arit.py
     test_cse.py
     test_dict_basic.py

@@ -8,6 +8,7 @@ from symengine.lib.symengine_wrapper import (
     normal_form, is_groebner, is_reduced_basis, is_zero_dimensional,
     solve_poly_system
 )
+from symengine.tests.groebner_corpus import SYSTEMS
 
 
 def _same_ideal(A, B, gens, order):
@@ -577,3 +578,152 @@ def test_groebner_parametric_genericity_assumptions_contract():
     # Currently always empty; this test documents that contract and must be
     # updated if/when real tracking is implemented.
     assert isinstance(G.stats['genericity_assumptions'], tuple)
+
+
+# ---------------------------------------------------------------------------
+# Vendored corpus tests (from groebner_corpus.py)
+# ---------------------------------------------------------------------------
+
+def _build(name):
+    """Build gens/polys/golden_size from a corpus entry."""
+    s = SYSTEMS[name]
+    gens = [Symbol(g) for g in s["gens"]]
+    env = {g: gens[i] for i, g in enumerate(s["gens"])}
+    polys = [eval(p, {"__builtins__": {}}, env) for p in s["polys"]]
+    return polys, gens, s["golden_size"]
+
+
+_FAST = ["cyclic3", "cyclic4"]
+_SLOW = [n for n in SYSTEMS if n not in _FAST]
+
+
+@pytest.mark.parametrize("name", _FAST)
+@pytest.mark.parametrize("algorithm", ["buchberger", "f5b", "mogvw"])
+def test_corpus_correct_degrevlex(name, algorithm):
+    polys, gens, golden = _build(name)
+    G = groebner_basis(polys, *gens, order="degrevlex", algorithm=algorithm)
+    assert is_groebner(list(G), gens, order="degrevlex") is True
+    assert len(G) == golden
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name", _SLOW)
+def test_corpus_correct_degrevlex_slow(name):
+    polys, gens, golden = _build(name)
+    G = groebner_basis(polys, *gens, order="degrevlex", algorithm="f5b")
+    assert is_groebner(list(G), gens, order="degrevlex") is True
+    assert len(G) == golden
+
+
+@pytest.mark.parametrize("name", _FAST)
+def test_corpus_cross_algorithm_same_ideal(name):
+    polys, gens, _ = _build(name)
+    Gb = groebner_basis(polys, *gens, order="degrevlex", algorithm="buchberger")
+    Gm = groebner_basis(polys, *gens, order="degrevlex", algorithm="mogvw")
+    assert _same_ideal(Gb, Gm, gens, order="degrevlex")
+
+
+@pytest.mark.parametrize("name", _FAST)
+def test_corpus_gf_prime(name):
+    polys, gens, _ = _build(name)
+    G = groebner_basis(polys, *gens, order="degrevlex", modulus=32003)
+    assert is_groebner(list(G), gens, order="degrevlex", modulus=32003) is True
+
+
+# ---------------------------------------------------------------------------
+# Exact golden bases (ported from moGVWTest.cpp)
+# ---------------------------------------------------------------------------
+
+def test_corpus_cyclic3_exact_degrevlex():
+    a, b, c = Symbol('a'), Symbol('b'), Symbol('c')
+    polys = [a*b*c - 1, a*b + b*c + c*a, a + b + c]
+    G = groebner_basis(polys, a, b, c, order='degrevlex')
+    _assert_groebner(G, [a, b, c], 'degrevlex')
+    assert set(G) == {a + b + c, b**2 + b*c + c**2, c**3 - 1}
+
+
+def test_corpus_cyclic3_exact_lex():
+    a, b, c = Symbol('a'), Symbol('b'), Symbol('c')
+    polys = [a*b*c - 1, a*b + b*c + c*a, a + b + c]
+    G = groebner_basis(polys, a, b, c, order='lex')
+    _assert_groebner(G, [a, b, c], 'lex')
+    assert set(G) == {a + b + c, b**2 + b*c + c**2, c**3 - 1}
+
+
+def test_corpus_cyclic4_exact_degrevlex():
+    a, b, c, d = Symbol('a'), Symbol('b'), Symbol('c'), Symbol('d')
+    polys = [a*b*c*d - 1, a*b*c + a*b*d + a*c*d + b*c*d,
+             a*b + b*c + a*d + c*d, a + b + c + d]
+    G = groebner_basis(polys, a, b, c, d, order='degrevlex')
+    _assert_groebner(G, [a, b, c, d], 'degrevlex')
+    assert len(G) == 7
+    assert set(G) == {
+        a + b + c + d,
+        b**2 + 2*b*d + d**2,
+        b*c**2 + c**2*d - b*d**2 - d**3,
+        b*c*d**2 + c**2*d**2 - b*d**3 + c*d**3 - d**4 - 1,
+        b*d**4 + d**5 - b - d,
+        c**3*d**2 + c**2*d**3 - c - d,
+        c**2*d**4 + b*c - b*d + c*d - 2*d**2,
+    }
+
+
+def test_corpus_cyclic4_exact_lex():
+    a, b, c, d = Symbol('a'), Symbol('b'), Symbol('c'), Symbol('d')
+    polys = [a*b*c*d - 1, a*b*c + a*b*d + a*c*d + b*c*d,
+             a*b + b*c + a*d + c*d, a + b + c + d]
+    G = groebner_basis(polys, a, b, c, d, order='lex')
+    _assert_groebner(G, [a, b, c, d], 'lex')
+    assert len(G) == 6
+    assert set(G) == {
+        c**2*d**6 - c**2*d**2 - d**4 + 1,
+        c**3*d**2 + c**2*d**3 - c - d,
+        b*d**4 - b + d**5 - d,
+        b*c - b*d + c**2*d**4 + c*d - 2*d**2,
+        b**2 + 2*b*d + d**2,
+        a + b + c + d,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests: solve_poly_system, fglm, normal_form
+# ---------------------------------------------------------------------------
+
+def test_corpus_solve_poly_system():
+    x, y = Symbol('x'), Symbol('y')
+    sol = solve_poly_system([x**2 - y, x**3 - x], x, y)
+    assert isinstance(sol, FiniteSet)
+    points = {tuple(p.args) for p in sol.args}
+    assert points == {
+        (Integer(0), Integer(0)),
+        (Integer(1), Integer(1)),
+        (Integer(-1), Integer(1)),
+    }
+
+
+def test_corpus_fglm_round_trip():
+    x0, x1, x2, x3 = Symbol('x0'), Symbol('x1'), Symbol('x2'), Symbol('x3')
+    f1 = x0 + 2*x1 + 2*x2 + 2*x3 - 1
+    f2 = x0**2 + 2*x1**2 + 2*x2**2 + 2*x3**2 - x0
+    f3 = 2*x0*x1 + 2*x1*x2 + 2*x2*x3 - x1
+    f4 = x1**2 + 2*x0*x2 + 2*x1*x3 - x2
+    G = groebner_basis([f1, f2, f3, f4], x0, x1, x2, x3, order='degrevlex')
+    G_lex = G.fglm('lex')
+    assert G_lex.order == 'lex'
+    assert is_groebner(list(G_lex), [x0, x1, x2, x3], order='lex')
+    G_back = G_lex.fglm('degrevlex')
+    assert is_groebner(list(G_back), [x0, x1, x2, x3], order='degrevlex')
+    assert _same_ideal(G, G_back, [x0, x1, x2, x3], order='degrevlex')
+
+
+def test_corpus_normal_form_membership():
+    a, b, c = Symbol('a'), Symbol('b'), Symbol('c')
+    polys = [a*b*c - 1, a*b + b*c + c*a, a + b + c]
+    G = groebner_basis(polys, a, b, c, order='degrevlex')
+    G_list = list(G)
+    gens = [a, b, c]
+    # Each generator reduces to 0 modulo the basis.
+    for p in polys:
+        assert normal_form(p, G_list, gens, order='degrevlex') == 0
+    # A perturbation not in the ideal does not reduce to 0.
+    assert normal_form(a + 1, G_list, gens, order='degrevlex') != 0
