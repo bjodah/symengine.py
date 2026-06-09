@@ -245,6 +245,8 @@ cdef object c2py(rcp_const_basic o):
         r = Set.__new__(UniversalSet)
     elif (symengine.is_a[symengine.FiniteSet](deref(o))):
         r = Set.__new__(FiniteSet)
+    elif (symengine.is_a[symengine.Tuple](deref(o))):
+        r = Basic.__new__(Tuple)
     elif (symengine.is_a[symengine.Union](deref(o))):
         r = Set.__new__(Union)
     elif (symengine.is_a[symengine.Complement](deref(o))):
@@ -3267,6 +3269,19 @@ class FiniteSet(Set):
         return sympy.FiniteSet(*[arg._sympy_() for arg in self.args])
 
 
+class Tuple(Basic):
+    """An ordered tuple of expressions, e.g. an element of the solution set
+    returned by :func:`solve_poly_system`."""
+
+    def __new__(self, *args):
+        cdef symengine.vec_basic v = iter_to_vec_basic(args)
+        return c2py(symengine.tuple(v))
+
+    def _sympy_(self):
+        import sympy
+        return sympy.Tuple(*[arg._sympy_() for arg in self.args])
+
+
 class Contains(Boolean):
 
     def __new__(self, expr, sset):
@@ -5680,7 +5695,8 @@ def linsolve(eqs, syms):
 
 
 cdef symengine.MonomialOrder _parse_monomial_order(order) except *:
-    if order is None or order == 'degrevlex':
+    # 'grevlex' is SymPy's spelling of SymEngine's 'degrevlex'; accept both.
+    if order is None or order == 'degrevlex' or order == 'grevlex':
         return symengine.DegRevLex
     elif order == 'lex':
         return symengine.Lex
@@ -5688,7 +5704,7 @@ cdef symengine.MonomialOrder _parse_monomial_order(order) except *:
         return symengine.GrLex
     else:
         raise ValueError(f"Unknown monomial ordering: {order!r}. "
-                         f"Supported: 'lex', 'grlex', 'degrevlex'")
+                         f"Supported: 'lex', 'grlex', 'degrevlex' (a.k.a. 'grevlex')")
 
 
 cdef symengine.GroebnerAlgorithm _parse_algorithm(algorithm) except *:
@@ -5887,8 +5903,9 @@ def groebner_basis(polys, *gens, **kwargs):
     cdef symengine.vec_basic c_polys = iter_to_vec_basic(poly_list)
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(gen_list)
     cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
-    cdef symengine.GroebnerResult result = symengine.groebner_basis(
-        c_polys, c_vars, opts)
+    cdef symengine.GroebnerResult result
+    with nogil:
+        result = symengine.groebner_basis(c_polys, c_vars, opts)
     if result.status == symengine.GBCancelled:
         raise RuntimeError("Groebner basis computation was cancelled")
     elif result.status == symengine.GBResourceLimitExceeded:
@@ -5925,8 +5942,10 @@ def normal_form(poly, G, gens, **kwargs):
     cdef symengine.vec_basic c_G = iter_to_vec_basic(list(G))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
     cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
-    cdef rcp_const_basic result = symengine.normal_form(
-        poly_.thisptr, c_G, c_vars, opts)
+    cdef rcp_const_basic poly_ptr = poly_.thisptr
+    cdef rcp_const_basic result
+    with nogil:
+        result = symengine.normal_form(poly_ptr, c_G, c_vars, opts)
     return c2py(result)
 
 
@@ -5934,7 +5953,9 @@ def is_groebner(G, gens, **kwargs):
     cdef symengine.vec_basic c_G = iter_to_vec_basic(list(G))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
     cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
-    cdef bint result = symengine.is_groebner(c_G, c_vars, opts)
+    cdef bint result
+    with nogil:
+        result = symengine.is_groebner(c_G, c_vars, opts)
     return bool(result)
 
 
@@ -5942,7 +5963,9 @@ def is_reduced_basis(G, gens, **kwargs):
     cdef symengine.vec_basic c_G = iter_to_vec_basic(list(G))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
     cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
-    cdef bint result = symengine.is_reduced_basis(c_G, c_vars, opts)
+    cdef bint result
+    with nogil:
+        result = symengine.is_reduced_basis(c_G, c_vars, opts)
     return bool(result)
 
 
@@ -5950,9 +5973,10 @@ def solve_poly_system(equations, *gens, **kwargs):
     cdef symengine.vec_basic c_eqs = iter_to_vec_basic(list(equations))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
     cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
-    cdef rcp_const_basic result = symengine.solve_poly_system(
-        c_eqs, c_vars, opts)
-    return c2py(result)
+    cdef RCP[const symengine.Set] result
+    with nogil:
+        result = symengine.solve_poly_system(c_eqs, c_vars, opts)
+    return c2py(<rcp_const_basic>result)
 
 
 def cse(exprs):

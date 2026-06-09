@@ -1,7 +1,18 @@
-from symengine import Symbol, groebner_basis, GroebnerBasis, Integer, Rational, groebner
+from symengine import (
+    Symbol, groebner_basis, GroebnerBasis, Integer, Rational, groebner,
+    FiniteSet, EmptySet, sympify,
+)
 from symengine.lib.symengine_wrapper import (
     normal_form, is_groebner, is_reduced_basis, solve_poly_system
 )
+
+
+def _same_ideal(A, B, gens, order):
+    """Two bases generate the same ideal iff every element of each reduces to
+    zero modulo the other. Robust to representation differences."""
+    A, B = list(A), list(B)
+    return (all(normal_form(p, B, gens, order=order) == 0 for p in A) and
+            all(normal_form(p, A, gens, order=order) == 0 for p in B))
 
 
 def test_groebner_basic_lex():
@@ -198,16 +209,45 @@ def test_groebner_basis_reduce_method():
     assert rem is not None
 
 
-def test_solve_poly_system_basic():
-    x, y = Symbol('x'), Symbol('y')
-    solutions = solve_poly_system([x**2 + y**2 - 1, x - y], x, y)
-    assert solutions is not None
+def test_solve_poly_system_linear():
+    # {2x-3, 3y/2 - 2x, z - 5y} has the unique solution (3/2, 2, 10).
+    x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+    sol = solve_poly_system([2*x - 3, Rational(3, 2)*y - 2*x, z - 5*y], x, y, z)
+    assert isinstance(sol, FiniteSet)
+    points = list(sol.args)
+    assert len(points) == 1
+    # Each solution point is an accessible Tuple of components (regression test
+    # for the Tuple/c2py wiring: this used to raise "Unsupported SymEngine class").
+    assert list(points[0].args) == [Rational(3, 2), Integer(2), Integer(10)]
 
 
 def test_solve_poly_system_trivial():
     x, y = Symbol('x'), Symbol('y')
-    solutions = solve_poly_system([x - 1, y - 2], x, y)
-    assert solutions is not None
+    sol = solve_poly_system([x - 1, y - 2], x, y)
+    assert isinstance(sol, FiniteSet)
+    points = list(sol.args)
+    assert len(points) == 1
+    assert list(points[0].args) == [Integer(1), Integer(2)]
+
+
+def test_solve_poly_system_finite_solutions():
+    # {x^2 - y, x^3 - x} has solutions (0,0), (1,1), (-1,1) -> 3 points.
+    x, y = Symbol('x'), Symbol('y')
+    sol = solve_poly_system([x**2 - y, x**3 - x], x, y)
+    assert isinstance(sol, FiniteSet)
+    points = {tuple(p.args) for p in sol.args}
+    assert points == {
+        (Integer(0), Integer(0)),
+        (Integer(1), Integer(1)),
+        (Integer(-1), Integer(1)),
+    }
+
+
+def test_solve_poly_system_inconsistent():
+    # {y - x, y - x - 1} is inconsistent -> empty solution set.
+    x, y = Symbol('x'), Symbol('y')
+    sol = solve_poly_system([y - x, y - x - 1], x, y)
+    assert sol == EmptySet
 
 
 def test_fglm_conversion():
@@ -268,3 +308,123 @@ def test_groebner_stats():
     assert 'input_polys' in stats
     assert 'output_polys' in stats
     assert stats['input_polys'] == 2
+
+
+def test_groebner_exact_lex_basis():
+    # Verified canonical answer from the C++ test suite: {x, y^3 - 1/2}.
+    x, y = Symbol('x'), Symbol('y')
+    f1 = x**2 + 2*x*y**2
+    f2 = x*y + 2*y**3 - 1
+    G = groebner_basis([f1, f2], x, y, order='lex')
+    assert is_groebner(list(G), [x, y], order='lex')
+    assert is_reduced_basis(list(G), [x, y], order='lex')
+    assert set(G) == {x, y**3 - Rational(1, 2)}
+
+
+def test_groebner_grevlex_alias():
+    # 'grevlex' (SymPy spelling) must be accepted as 'degrevlex'.
+    x, y = Symbol('x'), Symbol('y')
+    f1 = x**2 + 2*x*y**2
+    f2 = x*y + 2*y**3 - 1
+    G1 = groebner_basis([f1, f2], x, y, order='grevlex')
+    G2 = groebner_basis([f1, f2], x, y, order='degrevlex')
+    assert G1.order == 'degrevlex'
+    assert set(G1) == set(G2)
+
+
+def test_groebner_cross_order_same_ideal():
+    # lex and grlex bases of the same input describe the same ideal.
+    x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+    f1 = -x**2 + y
+    f2 = -x**3 + z
+    G_lex = groebner_basis([f1, f2], x, y, z, order='lex')
+    G_grlex = groebner_basis([f1, f2], x, y, z, order='grlex')
+    assert _same_ideal(G_lex, G_grlex, [x, y, z], order='lex')
+
+
+def test_groebner_cross_algorithm_same_ideal():
+    x, y = Symbol('x'), Symbol('y')
+    f1, f2 = x**2 - y, x**3 - x
+    G_buch = groebner_basis([f1, f2], x, y, order='degrevlex', algorithm='buchberger')
+    G_f5b = groebner_basis([f1, f2], x, y, order='degrevlex', algorithm='f5b')
+    G_mogvw = groebner_basis([f1, f2], x, y, order='degrevlex', algorithm='mogvw')
+    assert _same_ideal(G_buch, G_f5b, [x, y], order='degrevlex')
+    assert _same_ideal(G_buch, G_mogvw, [x, y], order='degrevlex')
+
+
+def test_normal_form_ideal_membership():
+    x, y = Symbol('x'), Symbol('y')
+    G = groebner_basis([x**2 - 1, y**2 - 1], x, y, order='degrevlex')
+    # x^2 - 1 is in the ideal -> reduces to 0; x*y + 1 is not.
+    assert normal_form(x**2 - 1, list(G), [x, y], order='degrevlex') == 0
+    assert normal_form(x*y + 1, list(G), [x, y], order='degrevlex') != 0
+
+
+def test_fglm_non_zero_dimensional_raises():
+    # {x*y - 1} over (x, y) is not zero-dimensional -> FGLM must reject it.
+    x, y = Symbol('x'), Symbol('y')
+    G = groebner_basis([x*y - 1], x, y, order='degrevlex')
+    try:
+        G.fglm('lex')
+        assert False, "expected FGLM to reject a non-zero-dimensional ideal"
+    except NotImplementedError:
+        pass
+
+
+def test_groebner_invalid_modulus():
+    # Composite / invalid moduli are rejected (UnsupportedCoefficientDomain).
+    x, y = Symbol('x'), Symbol('y')
+    for bad in (1, 4):
+        try:
+            groebner_basis([x**2 - y], x, y, modulus=bad)
+            assert False, "expected ValueError for modulus=%d" % bad
+        except ValueError:
+            pass
+    # Valid prime modulus succeeds.
+    G = groebner_basis([x**2 - y], x, y, modulus=7)
+    assert len(G) > 0
+
+
+def test_groebner_max_degree_limit():
+    # Input degree 5 with max_degree=3 must trip the resource limit.
+    x, y = Symbol('x'), Symbol('y')
+    try:
+        groebner_basis([x**5 - y, y**5 - x], x, y, order='degrevlex', max_degree=3)
+        assert False, "expected RuntimeError for exceeded max_degree"
+    except RuntimeError:
+        pass
+
+
+def test_groebner_alias_sympy_defaults():
+    # The SymPy-compatible groebner() defaults to lex (unlike groebner_basis).
+    x, y = Symbol('x'), Symbol('y')
+    G = groebner([x**2 + 2*x*y**2, x*y + 2*y**3 - 1], x, y)
+    assert G.order == 'lex'
+    # SymPy's method= keyword maps to algorithm=.
+    G2 = groebner([x**2 - y, x**3 - x], x, y, method='f5b')
+    assert G2.algorithm == 'f5b'
+
+
+def test_compare_with_sympy():
+    import pytest
+    sympy = pytest.importorskip("sympy")
+    sx, sy, sz = sympy.symbols('x y z')
+    x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+
+    cases = [
+        ([sx**2 + 2*sx*sy**2, sx*sy + 2*sy**3 - 1], [sx, sy], [x, y], 'lex'),
+        ([sx**3 - 2*sx*sy, sx**2*sy + sx - 2*sy**2], [sx, sy], [x, y], 'grlex'),
+        ([-sx**2 + sy, -sx**3 + sz], [sx, sy, sz], [x, y, z], 'lex'),
+    ]
+    for sympy_polys, sympy_gens, se_gens, order in cases:
+        sp_G = sympy.groebner(sympy_polys, *sympy_gens, order=order)
+        se_polys = [sympify(p) for p in sympy_polys]
+        se_G = groebner_basis(se_polys, *se_gens, order=order)
+        # Same number of reduced generators.
+        assert len(se_G) == len(sp_G)
+        # Every SymEngine basis element lies in the SymPy ideal and vice versa.
+        for p in se_G:
+            _, r = sympy.reduced(p._sympy_(), list(sp_G.exprs), *sympy_gens, order=order)
+            assert r == 0
+        for q in sp_G.exprs:
+            assert normal_form(sympify(q), list(se_G), se_gens, order=order) == 0

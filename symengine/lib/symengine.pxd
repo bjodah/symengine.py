@@ -984,12 +984,17 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
         GroebnerStats stats
         GroebnerAlgorithm selected_algorithm
 
-    GroebnerResult groebner_basis(const vec_basic &polys, const vec_sym &variables, const GroebnerOptions &options) except +
-    GroebnerResult fglm_convert(const GroebnerResult &source, MonomialOrder target_order, const GroebnerOptions &options) except +
-    rcp_const_basic normal_form(rcp_const_basic &poly, const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) except +
-    bint is_groebner(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) except +
-    bint is_reduced_basis(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) except +
-    rcp_const_basic solve_poly_system(const vec_basic &equations, const vec_sym &variables, const GroebnerOptions &options) except +
+    GroebnerResult groebner_basis(const vec_basic &polys, const vec_sym &variables, const GroebnerOptions &options) nogil except +
+    GroebnerResult fglm_convert(const GroebnerResult &source, MonomialOrder target_order, const GroebnerOptions &options) nogil except +
+    rcp_const_basic normal_form(rcp_const_basic &poly, const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) nogil except +
+    bint is_groebner(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) nogil except +
+    bint is_reduced_basis(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) nogil except +
+    RCP[const Set] solve_poly_system(const vec_basic &equations, const vec_sym &variables, const GroebnerOptions &options) nogil except +
+
+cdef extern from "<symengine/tuple.h>" namespace "SymEngine":
+    cdef cppclass Tuple(Basic):
+        pass
+    rcp_const_basic tuple(const vec_basic &v) nogil except +
 
 cdef extern from "symengine/tribool.h" namespace "SymEngine":
     cdef cppclass tribool:

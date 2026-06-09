@@ -34,9 +34,22 @@ from .lib.symengine_wrapper import (
     unicode,
     groebner_basis, GroebnerBasis, normal_form,
     is_groebner, is_reduced_basis, solve_poly_system,
+    Tuple,
 )
 
-groebner = groebner_basis
+def groebner(F, *gens, **args):
+    """SymPy-compatible wrapper around :func:`groebner_basis`.
+
+    Mirrors ``sympy.groebner``: the default monomial order is ``'lex'`` (whereas
+    the native ``groebner_basis`` defaults to ``'degrevlex'``), and SymPy's
+    ``method=`` keyword is accepted as an alias for ``algorithm=``.
+    """
+    args.setdefault('order', 'lex')
+    if 'method' in args:
+        args['algorithm'] = args.pop('method')
+    return groebner_basis(F, *gens, **args)
+
+
 from .utilities import var, symbols
 from .functions import *
 from .printing import init_printing

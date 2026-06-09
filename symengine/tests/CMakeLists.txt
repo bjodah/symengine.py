@@ -7,6 +7,7 @@ install(
     test_eval.py
     test_expr.py
     test_functions.py
+    test_groebner.py
     test_lambdify.py
     test_logic.py
     test_matrices.py
