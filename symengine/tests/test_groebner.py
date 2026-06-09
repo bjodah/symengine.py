@@ -11,12 +11,15 @@ from symengine.lib.symengine_wrapper import (
 from symengine.tests.groebner_corpus import SYSTEMS
 
 
-def _same_ideal(A, B, gens, order):
+def _same_ideal(A, B, gens, order, modulus=0):
     """Two bases generate the same ideal iff every element of each reduces to
     zero modulo the other. Robust to representation differences."""
     A, B = list(A), list(B)
-    return (all(normal_form(p, B, gens, order=order) == 0 for p in A) and
-            all(normal_form(p, A, gens, order=order) == 0 for p in B))
+    kw = {"order": order}
+    if modulus:
+        kw["modulus"] = modulus
+    return (all(normal_form(p, B, gens, **kw) == 0 for p in A) and
+            all(normal_form(p, A, gens, **kw) == 0 for p in B))
 
 
 def _assert_groebner(G, gens, order, modulus=0):
@@ -628,6 +631,23 @@ def test_corpus_gf_prime(name):
     polys, gens, _ = _build(name)
     G = groebner_basis(polys, *gens, order="degrevlex", modulus=32003)
     assert is_groebner(list(G), gens, order="degrevlex", modulus=32003) is True
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("modulus", [0, 32003])
+def test_corpus_cyclic5_mogvw_matches_f5b(modulus):
+    # Regression guard (docs/reports/11): unconditionally dropping
+    # equal-signature S-pairs made mogvw return an incomplete, non-Groebner
+    # basis on cyclic5 over both QQ and GF(p). mogvw must agree with f5b.
+    polys, gens, golden = _build("cyclic5")
+    kw = {"order": "degrevlex"}
+    if modulus:
+        kw["modulus"] = modulus
+    Gm = groebner_basis(polys, *gens, algorithm="mogvw", **kw)
+    assert is_groebner(list(Gm), gens, **kw) is True
+    assert len(Gm) == golden
+    Gf = groebner_basis(polys, *gens, algorithm="f5b", **kw)
+    assert _same_ideal(Gm, Gf, gens, order="degrevlex", modulus=modulus)
 
 
 # ---------------------------------------------------------------------------
