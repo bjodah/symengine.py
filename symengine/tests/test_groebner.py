@@ -381,22 +381,19 @@ def test_groebner_katsura4_correct(algorithm):
     assert len(G) == 7
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="MoGVW returns an incomplete basis on katsura4 "
-                          "(see 06-REVIEW-REPORT.md #1; fixed in Phase 03)")
-def test_groebner_katsura4_mogvw_xfail():
+def test_groebner_katsura4_mogvw_raises_until_fixed():
+    # Phase 02: explicit MoGVW self-verifies and refuses to return a wrong
+    # basis. Phase 03 will fix MoGVW; when it does, this raise goes away and
+    # this test must be replaced by an _assert_groebner correctness check.
     polys, gens = _katsura4()
-    G = groebner_basis(polys, *gens, order='degrevlex', algorithm='mogvw')
-    _assert_groebner(G, gens, 'degrevlex')
+    with pytest.raises(RuntimeError):
+        groebner_basis(polys, *gens, order='degrevlex', algorithm='mogvw')
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="AUTO selects MoGVW for GF(p)+grlex and returns an "
-                          "incomplete basis (06-REVIEW-REPORT.md #1; Phase 02 "
-                          "stops AUTO picking MoGVW, Phase 03 fixes MoGVW)")
 def test_groebner_katsura4_gf_grlex_auto_correct():
     polys, gens = _katsura4()
     G = groebner_basis(polys, *gens, order='grlex', modulus=32003)
+    assert G.algorithm != 'mogvw'      # AUTO must avoid the experimental algo
     _assert_groebner(G, gens, 'grlex', modulus=32003)
 
 
@@ -414,14 +411,13 @@ def test_groebner_fractional_field_parametric():
     assert _same_ideal(G_buch, G_f5b, gens, order='degrevlex')
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="MoGVW disagrees with buchberger on katsura4 "
-                          "(06-REVIEW-REPORT.md #1; Phase 03)")
-def test_groebner_cross_algorithm_katsura4_mogvw_xfail():
+def test_groebner_cross_algorithm_katsura4_mogvw_raises_until_fixed():
+    # Phase 02: explicit MoGVW self-verifies and refuses to return a wrong
+    # basis. Phase 03 will fix MoGVW; when it does, this test should verify
+    # cross-algorithm consistency.
     polys, gens = _katsura4()
-    G_buch = groebner_basis(polys, *gens, order='degrevlex', algorithm='buchberger')
-    G_mogvw = groebner_basis(polys, *gens, order='degrevlex', algorithm='mogvw')
-    assert _same_ideal(G_buch, G_mogvw, gens, order='degrevlex')
+    with pytest.raises(RuntimeError):
+        groebner_basis(polys, *gens, order='degrevlex', algorithm='mogvw')
 
 
 def test_normal_form_ideal_membership():
