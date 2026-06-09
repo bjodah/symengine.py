@@ -5837,7 +5837,11 @@ cdef class GroebnerBasis:
             return NotImplemented
         return (self.polys == other.polys and
                 self.gens == other.gens and
-                self.order == other.order)
+                self.order == other.order and
+                self.modulus == other.modulus)
+
+    def __hash__(self):
+        return hash((self.polys, self.gens, self.order, self.modulus))
 
     @property
     def is_zero_dimensional(self):
@@ -5881,12 +5885,14 @@ cdef class GroebnerBasis:
                              algorithm=algo_str, modulus=self._modulus)
 
     def reduce(self, expr):
+        """Return the normal form (remainder) of ``expr`` modulo this basis.
+
+        NOTE: unlike SymPy's ``GroebnerBasis.reduce``, which returns a
+        ``(quotients, remainder)`` pair, this returns only the remainder. The
+        underlying C++ ``normal_form`` does not expose the quotients.
+        """
         cdef Basic poly = sympify(expr)
-        cdef symengine.vec_basic c_G
-        cdef Basic b
-        for p in self._polys:
-            b = sympify(p)
-            c_G.push_back(b.thisptr)
+        cdef symengine.vec_basic c_G = iter_to_vec_basic(self._polys)
         cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(self._gens)
         cdef symengine.GroebnerOptions opts = _build_groebner_options({
             'order': self._order, 'modulus': self._modulus})
@@ -5900,6 +5906,12 @@ def groebner_basis(polys, *gens, **kwargs):
 
     The ``algorithm`` keyword accepts 'auto' (default), 'buchberger', 'f5b',
     'm4gb' (GF(p) only), and 'mogvw'.
+
+    For symbolic (parametric) coefficients — e.g. coefficients in QQ(C1, C2,
+    ...) — the result is valid generically: symbolic leading coefficients used
+    as pivots are implicitly assumed nonzero. ``stats['genericity_assumptions']``
+    is currently always an empty tuple; assumption tracking is not yet
+    implemented.
     """
     cdef list poly_list = list(polys)
     cdef list gen_list = list(gens)

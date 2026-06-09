@@ -550,3 +550,30 @@ def test_compare_with_sympy():
             assert r == 0
         for q in sp_G.exprs:
             assert normal_form(sympify(q), list(se_G), se_gens, order=order) == 0
+
+
+def test_groebner_eq_distinguishes_modulus():
+    x, y = Symbol('x'), Symbol('y')
+    f1, f2 = x**2 - y, y**2 - x
+    G_qq = groebner_basis([f1, f2], x, y, order='degrevlex')
+    G_gf = groebner_basis([f1, f2], x, y, order='degrevlex', modulus=7)
+    # Same polys/gens/order but different ground field -> not equal.
+    assert G_qq != G_gf
+    assert G_qq == groebner_basis([f1, f2], x, y, order='degrevlex')
+
+
+def test_groebner_reduce_matches_normal_form():
+    x, y = Symbol('x'), Symbol('y')
+    G = groebner_basis([x**2 - 1, y**2 - 1], x, y, order='degrevlex')
+    assert G.reduce(x*y + 1) == normal_form(x*y + 1, list(G), [x, y],
+                                            order='degrevlex')
+
+
+def test_groebner_parametric_genericity_assumptions_contract():
+    x, y = Symbol('x'), Symbol('y')
+    C1, C2 = Symbol('C1'), Symbol('C2')
+    G = groebner_basis([C1*x**2 + C2*y, x*y - 1], x, y, order='degrevlex')
+    assert len(G) > 0
+    # Currently always empty; this test documents that contract and must be
+    # updated if/when real tracking is implemented.
+    assert isinstance(G.stats['genericity_assumptions'], tuple)
