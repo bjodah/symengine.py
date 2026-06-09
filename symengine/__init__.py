@@ -31,8 +31,12 @@ from .lib.symengine_wrapper import (
     golden_ratio as GoldenRatio,
     catalan as Catalan,
     eulergamma as EulerGamma,
-    unicode
+    unicode,
+    groebner_basis, GroebnerBasis, normal_form,
+    is_groebner, is_reduced_basis, solve_poly_system,
 )
+
+groebner = groebner_basis
 from .utilities import var, symbols
 from .functions import *
 from .printing import init_printing

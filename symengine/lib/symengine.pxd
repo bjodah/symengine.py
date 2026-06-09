@@ -6,6 +6,7 @@ from cpython.ref cimport PyObject
 from libcpp.pair cimport pair
 from libcpp.set cimport set
 from libcpp.unordered_map cimport unordered_map
+from libc.stdint cimport uint64_t
 
 cdef extern from "<set>" namespace "std":
     # Cython's libcpp.set does not support multiset in 0.29.x
@@ -933,6 +934,62 @@ cdef extern from "<symengine/solve.h>" namespace "SymEngine":
     cdef RCP[const Set] solve(rcp_const_basic &f, RCP[const Symbol] &sym) nogil except +
     cdef RCP[const Set] solve(rcp_const_basic &f, RCP[const Symbol] &sym, RCP[const Set] &domain) nogil except +
     cdef vec_basic linsolve(const vec_basic &eqs, const vec_sym &syms) nogil except +
+
+cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
+    cdef enum MonomialOrder "SymEngine::MonomialOrder":
+        Lex "SymEngine::MonomialOrder::Lex"
+        GrLex "SymEngine::MonomialOrder::GrLex"
+        DegRevLex "SymEngine::MonomialOrder::DegRevLex"
+
+    cdef enum GroebnerAlgorithm "SymEngine::GroebnerAlgorithm":
+        Buchberger "SymEngine::GroebnerAlgorithm::Buchberger"
+        F5B "SymEngine::GroebnerAlgorithm::F5B"
+        MoGVW "SymEngine::GroebnerAlgorithm::MoGVW"
+        M4GB "SymEngine::GroebnerAlgorithm::M4GB"
+        Auto "SymEngine::GroebnerAlgorithm::Auto"
+
+    cdef enum GroebnerStatus "SymEngine::GroebnerStatus":
+        GBSuccess "SymEngine::GroebnerStatus::Success"
+        GBCancelled "SymEngine::GroebnerStatus::Cancelled"
+        GBResourceLimitExceeded "SymEngine::GroebnerStatus::ResourceLimitExceeded"
+        GBNotZeroDimensional "SymEngine::GroebnerStatus::NotZeroDimensional"
+        GBUnsupportedCoefficientDomain "SymEngine::GroebnerStatus::UnsupportedCoefficientDomain"
+        GBVerificationFailed "SymEngine::GroebnerStatus::VerificationFailed"
+
+    cdef cppclass GroebnerOptions "SymEngine::GroebnerOptions":
+        MonomialOrder order
+        GroebnerAlgorithm algorithm
+        bint reduced
+        bint interreduce_input
+        bint sort_output
+        unsigned cancellation_check_interval
+        unsigned max_s_pairs
+        unsigned max_reduction_steps
+        unsigned max_milliseconds
+        uint64_t modulus
+        unsigned max_degree
+
+    cdef cppclass GroebnerStats "SymEngine::GroebnerStats":
+        unsigned input_polys
+        unsigned output_polys
+        unsigned s_pairs_processed
+        unsigned reductions_to_zero
+        unsigned max_basis_size
+
+    cdef cppclass GroebnerResult "SymEngine::GroebnerResult":
+        vec_basic basis
+        vec_sym variables
+        MonomialOrder order
+        GroebnerStatus status
+        GroebnerStats stats
+        GroebnerAlgorithm selected_algorithm
+
+    GroebnerResult groebner_basis(const vec_basic &polys, const vec_sym &variables, const GroebnerOptions &options) except +
+    GroebnerResult fglm_convert(const GroebnerResult &source, MonomialOrder target_order, const GroebnerOptions &options) except +
+    rcp_const_basic normal_form(rcp_const_basic &poly, const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) except +
+    bint is_groebner(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) except +
+    bint is_reduced_basis(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) except +
+    rcp_const_basic solve_poly_system(const vec_basic &equations, const vec_sym &variables, const GroebnerOptions &options) except +
 
 cdef extern from "symengine/tribool.h" namespace "SymEngine":
     cdef cppclass tribool:
