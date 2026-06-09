@@ -975,6 +975,19 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
         unsigned s_pairs_processed
         unsigned reductions_to_zero
         unsigned max_basis_size
+        unsigned rejected_by_syzygy
+        unsigned rejected_by_rewritten
+        unsigned f5_reductions
+        unsigned labeled_monomials_lifted
+        unsigned rejected_by_lcm
+        unsigned collisions_resolved
+        unsigned matrices_built
+        unsigned max_matrix_rows_seen
+        unsigned max_matrix_columns_seen
+        unsigned rows_reduced_to_zero
+        unsigned polymatrix_entries_built
+        unsigned polymatrix_generation
+        vec_basic genericity_assumptions
 
     cdef cppclass GroebnerResult "SymEngine::GroebnerResult":
         vec_basic basis
@@ -989,6 +1002,7 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
     rcp_const_basic normal_form(rcp_const_basic &poly, const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) nogil except +
     bint is_groebner(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) nogil except +
     bint is_reduced_basis(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) nogil except +
+    bint is_zero_dimensional(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) nogil except +
     RCP[const Set] solve_poly_system(const vec_basic &equations, const vec_sym &variables, const GroebnerOptions &options) nogil except +
 
 cdef extern from "<symengine/tuple.h>" namespace "SymEngine":

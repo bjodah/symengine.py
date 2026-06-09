@@ -3,7 +3,8 @@ from symengine import (
     FiniteSet, EmptySet, sympify,
 )
 from symengine.lib.symengine_wrapper import (
-    normal_form, is_groebner, is_reduced_basis, solve_poly_system
+    normal_form, is_groebner, is_reduced_basis, is_zero_dimensional,
+    solve_poly_system
 )
 
 
@@ -403,6 +404,63 @@ def test_groebner_alias_sympy_defaults():
     # SymPy's method= keyword maps to algorithm=.
     G2 = groebner([x**2 - y, x**3 - x], x, y, method='f5b')
     assert G2.algorithm == 'f5b'
+
+
+def test_is_zero_dimensional_property():
+    x, y = Symbol('x'), Symbol('y')
+    # {x^2 - y, y^2 - x}: finitely many solutions -> zero-dimensional.
+    G0 = groebner_basis([x**2 - y, y**2 - x], x, y, order='degrevlex')
+    assert G0.is_zero_dimensional is True
+    # {x*y - 1}: a curve -> not zero-dimensional.
+    G1 = groebner_basis([x*y - 1], x, y, order='degrevlex')
+    assert G1.is_zero_dimensional is False
+
+
+def test_is_zero_dimensional_function():
+    x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+    G = groebner_basis([x**2 + y + z - 1, x + y**2 + z - 1, x + y + z**2 - 1],
+                       x, y, z, order='degrevlex')
+    assert is_zero_dimensional(list(G), [x, y, z], order='degrevlex') is True
+    # An unconstrained extra variable makes it positive-dimensional.
+    t = Symbol('t')
+    G2 = groebner_basis([x, y, z], x, y, z, t, order='degrevlex')
+    assert is_zero_dimensional(list(G2), [x, y, z, t], order='degrevlex') is False
+
+
+def test_is_zero_dimensional_matches_fglm():
+    # The predicate must agree with whether fglm() succeeds.
+    x, y = Symbol('x'), Symbol('y')
+    G = groebner_basis([x*y - 1], x, y, order='degrevlex')
+    assert G.is_zero_dimensional is False
+    try:
+        G.fglm('lex')
+        assert False, "fglm should reject a non-zero-dimensional ideal"
+    except NotImplementedError:
+        pass
+
+
+def test_fglm_round_trip():
+    # degrevlex -> lex -> degrevlex preserves the ideal.
+    x, y = Symbol('x'), Symbol('y')
+    G = groebner_basis([x**2 - y, y**2 - x], x, y, order='degrevlex')
+    G_lex = G.fglm('lex')
+    assert G_lex.order == 'lex'
+    assert is_groebner(list(G_lex), [x, y], order='lex')
+    G_back = G_lex.fglm('degrevlex')
+    assert _same_ideal(G, G_back, [x, y], order='degrevlex')
+
+
+def test_groebner_extended_stats():
+    x, y = Symbol('x'), Symbol('y')
+    G = groebner_basis([x**2 + 2*x*y**2, x*y + 2*y**3 - 1], x, y, order='degrevlex')
+    stats = G.stats
+    # Signature-based and matrix counters are surfaced.
+    for key in ('f5_reductions', 'rejected_by_syzygy', 'matrices_built',
+                'rows_reduced_to_zero', 'genericity_assumptions'):
+        assert key in stats
+    # genericity_assumptions is a tuple of expressions (empty unless the
+    # computation made parametric assumptions).
+    assert isinstance(stats['genericity_assumptions'], tuple)
 
 
 def test_compare_with_sympy():

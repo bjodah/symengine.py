@@ -33,7 +33,7 @@ from .lib.symengine_wrapper import (
     eulergamma as EulerGamma,
     unicode,
     groebner_basis, GroebnerBasis, normal_form,
-    is_groebner, is_reduced_basis, solve_poly_system,
+    is_groebner, is_reduced_basis, is_zero_dimensional, solve_poly_system,
     Tuple,
 )
 
