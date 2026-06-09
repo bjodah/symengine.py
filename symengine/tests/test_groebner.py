@@ -9,17 +9,13 @@ from symengine.lib.symengine_wrapper import (
     solve_poly_system
 )
 from symengine.tests.groebner_corpus import SYSTEMS
-
-
-def _same_ideal(A, B, gens, order, modulus=0):
-    """Two bases generate the same ideal iff every element of each reduces to
-    zero modulo the other. Robust to representation differences."""
-    A, B = list(A), list(B)
-    kw = {"order": order}
-    if modulus:
-        kw["modulus"] = modulus
-    return (all(normal_form(p, B, gens, **kw) == 0 for p in A) and
-            all(normal_form(p, A, gens, **kw) == 0 for p in B))
+from symengine.tests.groebner_oracle import (
+    same_ideal as _same_ideal,
+    contains_ideal as _contains_ideal,
+    assert_correct_gb as _assert_correct_gb,
+    run_with_timeout,
+    all_algorithms as _all_algorithms,
+)
 
 
 def _assert_groebner(G, gens, order, modulus=0):

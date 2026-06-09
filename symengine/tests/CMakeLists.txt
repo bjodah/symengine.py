@@ -3,7 +3,10 @@ install(
     __init__.py
     _gen_corpus.py
     groebner_corpus.py
+    groebner_oracle.py
     test_arit.py
+    test_groebner_extended.py
+    test_groebner_extended2.py
     test_cse.py
     test_dict_basic.py
     test_eval.py
