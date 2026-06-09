@@ -5899,9 +5899,7 @@ def groebner_basis(polys, *gens, **kwargs):
     """Compute a Groebner basis for a system of polynomials.
 
     The ``algorithm`` keyword accepts 'auto' (default), 'buchberger', 'f5b',
-    'm4gb' (GF(p) only), and 'mogvw'. NOTE: 'mogvw' is EXPERIMENTAL and may
-    raise RuntimeError("verification failed") on systems it cannot yet handle
-    correctly; prefer 'f5b' or 'auto'.
+    'm4gb' (GF(p) only), and 'mogvw'.
     """
     cdef list poly_list = list(polys)
     cdef list gen_list = list(gens)
@@ -5923,8 +5921,8 @@ def groebner_basis(polys, *gens, **kwargs):
         raise ValueError("Unsupported coefficient domain for the chosen algorithm")
     elif result.status == symengine.GBVerificationFailed:
         raise RuntimeError(
-            "Groebner basis verification failed: the 'mogvw' algorithm is "
-            "experimental and produced a non-Groebner basis for this system. "
+            "Groebner basis verification failed: the 'mogvw' algorithm "
+            "produced a non-Groebner basis for this system. "
             "Use algorithm='f5b' or 'buchberger', or omit algorithm= for AUTO.")
     elif result.status != symengine.GBSuccess:
         raise RuntimeError("Groebner basis computation failed")
