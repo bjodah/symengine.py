@@ -574,9 +574,83 @@ def test_groebner_parametric_genericity_assumptions_contract():
     C1, C2 = Symbol('C1'), Symbol('C2')
     G = groebner_basis([C1*x**2 + C2*y, x*y - 1], x, y, order='degrevlex')
     assert len(G) > 0
-    # Currently always empty; this test documents that contract and must be
-    # updated if/when real tracking is implemented.
+    # Assumptions are tracked: dividing by symbolic leading coefficients
+    # records nonzero constraints on the parameters.
     assert isinstance(G.stats['genericity_assumptions'], tuple)
+    # This system requires dividing by C1, so it must appear in assumptions.
+    assert len(G.stats['genericity_assumptions']) > 0
+    free = set()
+    for a in G.stats['genericity_assumptions']:
+        free |= a.free_symbols
+    assert C1 in free
+
+
+def test_groebner_parametric_genericity_normalizes_power_assumptions():
+    x, y = Symbol('x'), Symbol('y')
+    C1 = Symbol('C1')
+    G = groebner_basis([C1**2*x + y, x - y], x, y, order='degrevlex')
+    assumptions = G.stats['genericity_assumptions']
+    assert C1 in assumptions
+    assert all(str(a) != 'C1**2' for a in assumptions)
+
+
+def test_groebner_specialize_substitutes_when_assumptions_hold():
+    x, y = Symbol('x'), Symbol('y')
+    C1 = Symbol('C1')
+    G_param = groebner_basis([C1*x + y - 1, x - 1], x, y, order='degrevlex',
+                             algorithm='buchberger')
+    G_spec = G_param.specialize({C1: 2})
+    G_ref = groebner_basis([2*x + y - 1, x - 1], x, y, order='degrevlex',
+                           algorithm='buchberger')
+    assert isinstance(G_spec, GroebnerBasis)
+    assert G_spec.order == 'degrevlex'
+    assert G_spec.stats['specialization_method'] == 'substitute'
+    assert G_spec.stats['genericity_assumptions'] == ()
+    assert _same_ideal(G_spec, G_ref, [x, y], order='degrevlex')
+
+
+def test_groebner_specialize_recomputes_when_assumption_is_violated():
+    x, y = Symbol('x'), Symbol('y')
+    C1 = Symbol('C1')
+    G_param = groebner_basis([C1*x**2 - y, x + y], x, y, order='degrevlex',
+                             algorithm='buchberger')
+    G_spec = G_param.specialize({C1: 0})
+    G_ref = groebner_basis([Integer(0)*x**2 - y, x + y], x, y,
+                           order='degrevlex', algorithm='buchberger')
+    assert G_spec.stats['specialization_method'] == 'recompute'
+    assert G_spec.stats['genericity_assumptions'] == ()
+    assert _same_ideal(G_spec, G_ref, [x, y], order='degrevlex')
+
+
+def test_groebner_specialize_rejects_generator_substitutions():
+    x, y = Symbol('x'), Symbol('y')
+    C1 = Symbol('C1')
+    G = groebner_basis([C1*x + y - 1, x - 1], x, y, order='degrevlex')
+    with pytest.raises(ValueError, match="parameters"):
+        G.specialize({x: 1})
+
+
+def test_groebner_specialize_rejects_undecidable_symbolic_parameters():
+    x, y = Symbol('x'), Symbol('y')
+    C1, a = Symbol('C1'), Symbol('a')
+    G = groebner_basis([C1*x + y, x - y], x, y, order='degrevlex',
+                       algorithm='buchberger')
+    with pytest.raises(ValueError, match="concrete parameter values"):
+        G.specialize({C1: a + 1})
+
+
+def test_groebner_specialize_recomputes_fglm_basis_in_target_order():
+    x, y = Symbol('x'), Symbol('y')
+    C1 = Symbol('C1')
+    G = groebner_basis([C1*x**2 - y, x + y], x, y, order='degrevlex',
+                       algorithm='buchberger')
+    G_lex = G.fglm('lex')
+    G_spec = G_lex.specialize({C1: 0})
+    G_ref = groebner_basis([Integer(0)*x**2 - y, x + y], x, y,
+                           order='lex', algorithm='buchberger')
+    assert G_spec.order == 'lex'
+    assert G_spec.stats['specialization_method'] == 'recompute'
+    assert _same_ideal(G_spec, G_ref, [x, y], order='lex')
 
 
 # ---------------------------------------------------------------------------

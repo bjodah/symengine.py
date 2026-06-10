@@ -5780,6 +5780,28 @@ cdef list _vec_sym_to_list(symengine.vec_sym& vec):
     return result
 
 
+cdef bint _specialization_value_is_invalid(value):
+    return value == zoo or value == nan
+
+
+cdef object _classify_genericity_assumption(assumption, substitutions):
+    value = assumption.subs(substitutions)
+    if value == 0 or _specialization_value_is_invalid(value):
+        return 'violated'
+    if value.free_symbols:
+        return 'undecidable'
+    return 'safe'
+
+
+cdef bint _polys_are_concrete_for_gens(polys, gens):
+    cdef set gen_set = set(gens)
+    cdef object poly
+    for poly in polys:
+        if not poly.free_symbols.issubset(gen_set):
+            return False
+    return True
+
+
 cdef class GroebnerBasis:
     cdef list _polys
     cdef list _gens
@@ -5787,15 +5809,20 @@ cdef class GroebnerBasis:
     cdef str _algorithm
     cdef unsigned long long _modulus
     cdef dict _stats
+    cdef list _original_input
 
     def __init__(self, polys, gens, order='degrevlex', algorithm='auto',
-                 modulus=0, stats=None):
+                 modulus=0, stats=None, original_input=None):
         self._polys = list(polys)
         self._gens = list(gens)
         self._order = order
         self._algorithm = algorithm
         self._modulus = modulus
         self._stats = stats or {}
+        if original_input is None:
+            self._original_input = None
+        else:
+            self._original_input = list(original_input)
 
     @property
     def polys(self):
@@ -5885,7 +5912,84 @@ cdef class GroebnerBasis:
         order_str = _monomial_order_to_str(target_result.order)
         algo_str = _algorithm_to_str(target_result.selected_algorithm)
         return GroebnerBasis(basis_polys, result_gens, order=order_str,
-                             algorithm=algo_str, modulus=self._modulus)
+                             algorithm=algo_str, modulus=self._modulus,
+                             stats=dict(self._stats),
+                             original_input=self._original_input)
+
+    def specialize(self, substitutions):
+        """Specialize a parametric Groebner basis to concrete parameter values.
+
+        If every recorded genericity assumption stays exactly nonzero under the
+        substitution, this returns a cheap substituted basis. If any assumption
+        is violated, the original input system is substituted and recomputed.
+
+        Symbolically undecidable substitutions are rejected unless substituting
+        into the original input produces a concrete system over the current
+        generators.
+        """
+        cdef object param
+        cdef object assumption
+        cdef list assumptions = list(self._stats.get('genericity_assumptions', ()))
+        cdef list violated = []
+        cdef list undecidable = []
+        cdef object state
+        cdef list specialized_input
+        cdef dict stats
+        cdef GroebnerBasis recomputed
+
+        substitutions = dict(substitutions)
+        for param in substitutions:
+            if param in self._gens:
+                raise ValueError(
+                    "specialize() only supports substitutions for parameters, "
+                    "not Groebner generators")
+
+        for assumption in assumptions:
+            state = _classify_genericity_assumption(assumption, substitutions)
+            if state == 'violated':
+                violated.append(assumption)
+            elif state == 'undecidable':
+                undecidable.append(assumption)
+
+        if not violated and not undecidable:
+            stats = dict(self._stats)
+            stats['genericity_assumptions'] = ()
+            stats['specialization_method'] = 'substitute'
+            specialized_input = None
+            if self._original_input is not None:
+                specialized_input = [p.subs(substitutions)
+                                     for p in self._original_input]
+            return GroebnerBasis(
+                [p.subs(substitutions) for p in self._polys],
+                self._gens,
+                order=self._order,
+                algorithm=self._algorithm,
+                modulus=self._modulus,
+                stats=stats,
+                original_input=specialized_input)
+
+        if self._original_input is None:
+            raise ValueError(
+                "cannot recompute a specialized Groebner basis because the "
+                "original input polynomials were not retained")
+
+        specialized_input = [p.subs(substitutions) for p in self._original_input]
+        if not _polys_are_concrete_for_gens(specialized_input, self._gens):
+            reason = "undecidable genericity assumptions"
+            if violated:
+                reason = "violated assumptions plus remaining symbolic parameters"
+            raise ValueError(
+                "specialize() requires concrete parameter values when "
+                f"{reason} prevent safe substitution")
+
+        recomputed = groebner_basis(
+            specialized_input,
+            *self._gens,
+            order=self._order,
+            algorithm=self._algorithm,
+            modulus=self._modulus)
+        recomputed._stats['specialization_method'] = 'recompute'
+        return recomputed
 
     def reduce(self, expr):
         """Return the normal form (remainder) of ``expr`` modulo this basis.
@@ -5913,8 +6017,8 @@ def groebner_basis(polys, *gens, **kwargs):
     For symbolic (parametric) coefficients — e.g. coefficients in QQ(C1, C2,
     ...) — the result is valid generically: symbolic leading coefficients used
     as pivots are implicitly assumed nonzero. ``stats['genericity_assumptions']``
-    is currently always an empty tuple; assumption tracking is not yet
-    implemented.
+    records these nonzero assumptions as a tuple of expressions; substituting
+    a value that makes any of them zero invalidates the basis.
     """
     cdef list poly_list = list(polys)
     cdef list gen_list = list(gens)
@@ -5974,7 +6078,7 @@ def groebner_basis(polys, *gens, **kwargs):
     }
     return GroebnerBasis(basis_polys, result_gens, order=order_str,
                          algorithm=algo_str, modulus=kwargs.get('modulus', 0),
-                         stats=stats)
+                         stats=stats, original_input=poly_list)
 
 
 def normal_form(poly, G, gens, **kwargs):
