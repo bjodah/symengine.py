@@ -11,9 +11,11 @@ check all three correctness properties:
 """
 
 import multiprocessing
+import queue
 import subprocess
 import sys
 import os
+import time
 
 from symengine.lib.symengine_wrapper import (
     normal_form,
@@ -113,25 +115,45 @@ def run_with_timeout(fn, *args, timeout=30, **kwargs):
     on failure.  This prevents a hanging/segfaulting C++ engine from blocking
     the test suite.
 
+    The queue must be drained BEFORE joining the child: a result whose
+    pickle exceeds the OS pipe buffer blocks the queue's feeder thread until
+    the parent reads, so join-before-get deadlocks and large results would
+    be misreported as TIMEOUT (this masked real mogvw results in report 13).
+
     Note: fn and its arguments must be picklable for multiprocessing.
     """
     ctx = multiprocessing.get_context("spawn")
     q = ctx.Queue()
     p = ctx.Process(target=_worker, args=(fn, args, kwargs, q))
     p.start()
-    p.join(timeout=timeout)
-    if p.is_alive():
+    deadline = time.monotonic() + timeout
+    outcome = None
+    while outcome is None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            outcome = q.get(timeout=min(0.5, remaining))
+        except queue.Empty:
+            if not p.is_alive():
+                # crashed (e.g. segfault) without producing a result
+                break
+    if outcome is None and p.is_alive():
         p.terminate()
         p.join(5)
         if p.is_alive():
             p.kill()
             p.join()
         return _SENTINEL_TIMEOUT
-    if not q.empty():
-        status, value = q.get()
-        if status == "OK":
-            return value
+    p.join(5)
+    if p.is_alive():
+        p.terminate()
+        p.join()
+    if outcome is None:
         return _SENTINEL_ERROR
+    status, value = outcome
+    if status == "OK":
+        return value
     return _SENTINEL_ERROR
 
 

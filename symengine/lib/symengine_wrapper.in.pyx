@@ -5752,7 +5752,10 @@ cdef symengine.GroebnerOptions _build_groebner_options(dict kwargs) except *:
     opts.reduced = kwargs.get('reduced', True)
     opts.interreduce_input = kwargs.get('interreduce_input', True)
     opts.sort_output = kwargs.get('sort_output', True)
-    opts.modulus = kwargs.get('modulus', 0)
+    mod = kwargs.get('modulus', 0)
+    if not isinstance(mod, int) or isinstance(mod, bool) or mod < 0:
+        raise ValueError("modulus must be a non-negative integer")
+    opts.modulus = mod
     opts.max_s_pairs = kwargs.get('max_s_pairs', 0)
     opts.max_reduction_steps = kwargs.get('max_reduction_steps', 0)
     opts.max_milliseconds = kwargs.get('max_milliseconds', 0)
