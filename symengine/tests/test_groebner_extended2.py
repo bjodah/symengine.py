@@ -142,6 +142,16 @@ def _verify_solutions(F, sol, gens):
                     f"Solution {vals} does not satisfy {f} (got {v})"
 
 
+def _assert_fully_instantiated(sol, gens):
+    assert isinstance(sol, FiniteSet), \
+        f"Expected FiniteSet, got {type(sol).__name__}"
+    gen_set = set(gens)
+    for pt in sol.args:
+        for value in pt.args:
+            assert value.free_symbols.isdisjoint(gen_set), \
+                f"Expected concrete point, got symbolic component {value}"
+
+
 class TestWP6SolvePolySystem:
 
     def test_solve_zero_dim_two_solutions(self):
@@ -207,17 +217,56 @@ class TestWP6SolvePolySystem:
         F = [2*x - 3, Rational(3, 2)*y - 2*x, z - 5*y]
         sol = solve_poly_system(F, x, y, z)
         _verify_solutions(F, sol, [x, y, z])
+        _assert_fully_instantiated(sol, [x, y, z])
         pts = list(sol.args)
         assert len(pts) == 1
         assert list(pts[0].args) == [Rational(3, 2), Integer(2), Integer(10)]
 
+    def test_solve_nested_univariate_residual(self):
+        x, y = Symbol('x'), Symbol('y')
+        F = [x**2, y**2]
+        sol = solve_poly_system(F, x, y)
+        _verify_solutions(F, sol, [x, y])
+        _assert_fully_instantiated(sol, [x, y])
+        assert {tuple(p.args) for p in sol.args} == {
+            (Integer(0), Integer(0)),
+        }
+
+    def test_solve_product_grid_residual(self):
+        x, y = Symbol('x'), Symbol('y')
+        F = [x**2 - x, y**2 - y]
+        sol = solve_poly_system(F, x, y)
+        _verify_solutions(F, sol, [x, y])
+        _assert_fully_instantiated(sol, [x, y])
+        assert {tuple(p.args) for p in sol.args} == {
+            (Integer(0), Integer(0)),
+            (Integer(0), Integer(1)),
+            (Integer(1), Integer(0)),
+            (Integer(1), Integer(1)),
+        }
+
     def test_solve_three_var_system(self):
-        """Note: no single variable separates this system's solutions, so the
-        solver returns a sound subset (3 of 5 distinct points); see report 14."""
         x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
         F = [x**2 + y + z - 1, x + y**2 + z - 1, x + y + z**2 - 1]
         sol = solve_poly_system(F, x, y, z)
         _verify_solutions(F, sol, [x, y, z])
+        _assert_fully_instantiated(sol, [x, y, z])
+        pts = {tuple(p.args) for p in sol.args}
+        assert len(pts) == 5
+        assert {
+            (Integer(1), Integer(0), Integer(0)),
+            (Integer(0), Integer(1), Integer(0)),
+            (Integer(0), Integer(0), Integer(1)),
+        }.issubset(pts)
+        diagonal = [pt for pt in pts if pt[0] == pt[1] == pt[2]]
+        assert len(diagonal) == 2
+
+    def test_solve_cyclic3_returns_points(self):
+        x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+        F = [x + y + z, x*y + x*z + y*z, x*y*z - 1]
+        sol = solve_poly_system(F, x, y, z)
+        _verify_solutions(F, sol, [x, y, z])
+        _assert_fully_instantiated(sol, [x, y, z])
         assert len(sol.args) > 0
 
 
