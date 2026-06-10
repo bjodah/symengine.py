@@ -107,6 +107,51 @@ class TestWP5Parametric:
             free |= a.free_symbols
         assert C1 in free
 
+    def test_parametric_genericity_default_records_pivot(self):
+        x, y = Symbol('x'), Symbol('y')
+        C1 = Symbol('C1')
+        G = groebner_basis([C1*x**2 - y, x + y], x, y, order='degrevlex',
+                           algorithm='buchberger')
+        assert G.stats['genericity_assumptions']
+
+    def test_parametric_genericity_can_be_disabled(self):
+        x, y = Symbol('x'), Symbol('y')
+        C1 = Symbol('C1')
+        G = groebner_basis([C1*x**2 - y, x + y], x, y, order='degrevlex',
+                           algorithm='buchberger', track_genericity=False)
+        assert G.stats['genericity_assumptions'] == ()
+
+    def test_rational_genericity_is_empty(self):
+        x, y = Symbol('x'), Symbol('y')
+        G = groebner_basis([Integer(2)*x**2 - y, x + y], x, y,
+                           order='degrevlex')
+        assert G.stats['genericity_assumptions'] == ()
+
+    def test_gfp_genericity_is_empty(self):
+        x, y = Symbol('x'), Symbol('y')
+        G = groebner_basis([Integer(3)*x**2 - y, x + y], x, y,
+                           order='degrevlex', modulus=7)
+        assert G.stats['genericity_assumptions'] == ()
+
+    def test_parametric_genericity_disabled_with_f5b(self):
+        x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+        C1, C2, C3 = Symbol('C1'), Symbol('C2'), Symbol('C3')
+        F = [C1*x**2 + y - z, C2*y**2 + z - x, C3*z**2 + x - y]
+        G = groebner_basis(F, x, y, z, order='degrevlex',
+                           track_genericity=False)
+        assert G.stats['genericity_assumptions'] == ()
+
+    def test_parametric_numeric_pivots_yield_empty_assumptions(self):
+        x, y = Symbol('x'), Symbol('y')
+        C1 = Symbol('C1')
+        F = [x**2 + C1*y, x + y]
+        G = groebner_basis(F, x, y, order='degrevlex')
+        assumptions = G.stats['genericity_assumptions']
+        free = set()
+        for a in assumptions:
+            free |= a.free_symbols
+        assert C1 not in free
+
     def test_parametric_multi_symbol_agreement(self):
         x, y = Symbol('x'), Symbol('y')
         C1, C2, C3 = Symbol('C1'), Symbol('C2'), Symbol('C3')

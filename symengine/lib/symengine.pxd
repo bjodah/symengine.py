@@ -968,6 +968,7 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
         unsigned max_milliseconds
         uint64_t modulus
         unsigned max_degree
+        bint track_genericity_assumptions
 
     cdef cppclass GroebnerStats "SymEngine::GroebnerStats":
         unsigned input_polys

@@ -5760,6 +5760,7 @@ cdef symengine.GroebnerOptions _build_groebner_options(dict kwargs) except *:
     opts.max_reduction_steps = kwargs.get('max_reduction_steps', 0)
     opts.max_milliseconds = kwargs.get('max_milliseconds', 0)
     opts.max_degree = kwargs.get('max_degree', 0)
+    opts.track_genericity_assumptions = kwargs.get('track_genericity', True)
     opts.cancellation_check_interval = 1024
     return opts
 
@@ -6019,6 +6020,10 @@ def groebner_basis(polys, *gens, **kwargs):
     as pivots are implicitly assumed nonzero. ``stats['genericity_assumptions']``
     records these nonzero assumptions as a tuple of expressions; substituting
     a value that makes any of them zero invalidates the basis.
+
+    Pass ``track_genericity=False`` to skip recording these assumptions.
+    When disabled, ``stats['genericity_assumptions']`` is always ``()`` even
+    for parametric systems.  Default is ``True``.
     """
     cdef list poly_list = list(polys)
     cdef list gen_list = list(gens)
