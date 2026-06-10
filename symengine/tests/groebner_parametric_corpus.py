@@ -274,4 +274,23 @@ PARAMETRIC_SYSTEMS = {
             },
         ],
     },
+    "so_snippet_01": {
+        "gens": ["a", "b", "d", "e", "f"],
+        "params": ["kp1", "kp2"],
+        "polys": [
+            "a + b - Rational(13, 5)",
+            "2*a + b + d + 2*f - 7",
+            "d + e - 2",
+            "a*e - kp2*b*d",
+            "b**2*f - a**2*kp1**2 * (a + b + d + e + f + Rational(329, 25))",
+        ],
+        "source": "resources/stackoverflow-snippet-01.md",
+        "notes": "Parametric system from StackOverflow snippet 01",
+        "branches": [
+            {
+                "condition": "kp1 != 0 and kp2 != 0",
+                "description": "generic branch",
+            },
+        ],
+    },
 }

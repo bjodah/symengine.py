@@ -11,7 +11,7 @@ See docs/reports/22a-EXTEND-TESTING_mimov25pro.md for methodology.
 import pytest
 
 from symengine import (
-    Symbol, groebner_basis, GroebnerBasis,
+    Symbol, groebner_basis, GroebnerBasis, Rational,
 )
 from symengine.lib.symengine_wrapper import (
     normal_form,
@@ -43,6 +43,7 @@ def _build_corpus(name):
     s = SYSTEMS[name]
     gens = [Symbol(g) for g in s["gens"]]
     env = {g: gens[i] for i, g in enumerate(s["gens"])}
+    env["Rational"] = Rational
     polys = [eval(p, {"__builtins__": {}}, env) for p in s["polys"]]
     return polys, gens, s["golden_size"]
 
@@ -52,6 +53,7 @@ def _build_extended_qq(name):
     s = EXTENDED_SYSTEMS_QQ[name]
     gens = [Symbol(g) for g in s["gens"]]
     env = {g: gens[i] for i, g in enumerate(s["gens"])}
+    env["Rational"] = Rational
     polys = [eval(p, {"__builtins__": {}}, env) for p in s["polys"]]
     return polys, gens, s["golden_size"]
 
@@ -61,6 +63,7 @@ def _build_extended_gfp(name):
     s = EXTENDED_SYSTEMS_GFP[name]
     gens = [Symbol(g) for g in s["gens"]]
     env = {g: gens[i] for i, g in enumerate(s["gens"])}
+    env["Rational"] = Rational
     polys = [eval(p, {"__builtins__": {}}, env) for p in s["polys"]]
     return polys, gens, s["golden_size"], s["modulus"]
 
@@ -73,6 +76,7 @@ def _build_reserved_hazard(name):
     s = EXTENDED_SYSTEMS_RESERVED_HAZARD[name]
     gens = [Symbol(g) for g in s["gens"]]
     env = {g: gens[i] for i, g in enumerate(s["gens"])}
+    env["Rational"] = Rational
     polys = [eval(p, {"__builtins__": {}}, env) for p in s["polys"]]
     return polys, gens, s["golden_size"]
 
@@ -86,6 +90,7 @@ def _build_parametric_specialization(name, spec_dict):
     env = {g: gens[i] for i, g in enumerate(s["gens"])}
     env.update({p: params[i] for i, p in enumerate(s["params"])})
     env.update(spec_dict)
+    env["Rational"] = Rational
     polys = [eval(p, {"__builtins__": {}}, env) for p in s["polys"]]
     return polys, gens
 
@@ -564,6 +569,10 @@ _PARAMETRIC_SPECIALIZATIONS = {
     "grobcov_concoid_locus": [
         {"x": 2, "y": 0},                       # generic
         {"x": 0, "y": 2},                       # degenerate x=0
+    ],
+    "so_snippet_01": [
+        {"kp1": Rational(21, 10), "kp2": Rational(19, 5)},  # generic specialization
+        {"kp1": 1, "kp2": 1},
     ],
 }
 

@@ -167,6 +167,26 @@ EXTENDED_SYSTEMS_QQ = {
         "source": "groebner/F5Test.cpp",
         "notes": "homogenized cyclic-3 F5 C++ test",
     },
+    "so_snippet_02_full": {
+        "gens": ["x", "y"],
+        "polys": [
+            "(y + Rational(3, 50))*x*(2*x**2 - Rational(6, 25)*y + 2) - 121*x*y",
+            "(x**2 - Rational(3, 25)*y + 1)**2 - 4*(y + Rational(3, 50))**2*x**2 - 121*x**2",
+        ],
+        "golden_size": 5,
+        "source": "resources/stackoverflow-snippet-02.md",
+        "notes": "Full system from StackOverflow snippet 02",
+    },
+    "so_snippet_02_factored": {
+        "gens": ["x", "y"],
+        "polys": [
+            "(y + Rational(3, 50))*(2*x**2 - Rational(6, 25)*y + 2) - 121*y",
+            "(x**2 - Rational(3, 25)*y + 1)**2 - 4*(y + Rational(3, 50))**2*x**2 - 121*x**2",
+        ],
+        "golden_size": 3,
+        "source": "resources/stackoverflow-snippet-02.md",
+        "notes": "Factored system from StackOverflow snippet 02",
+    },
 }
 
 # GF(p) systems — various primes for coverage.
