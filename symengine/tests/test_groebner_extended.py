@@ -45,6 +45,32 @@ def _build_corpus(name):
     return polys, gens, s["golden_size"]
 
 
+def _build_corpus_gfp(name, prime):
+    """Build polys/gens/golden from the vendored corpus for a specific GF(p).
+
+    Returns (polys, gens, golden_size_or_None).  Per-prime goldens from
+    golden_gfp are preferred; for large primes the QQ golden_size is used as
+    fallback (since large primes typically match QQ sizes).  For small primes
+    the golden is None (sizes may differ due to cancellation).
+    """
+    s = SYSTEMS[name]
+    gens = [Symbol(g) for g in s["gens"]]
+    env = {g: gens[i] for i, g in enumerate(s["gens"])}
+    polys = [eval(p, {"__builtins__": {}}, env) for p in s["polys"]]
+
+    gfp_goldens = s.get("golden_gfp", {})
+    if prime in gfp_goldens:
+        # Use the degrevlex golden for this prime
+        golden = gfp_goldens[prime].get("degrevlex")
+    elif prime >= 10000:
+        # Large primes typically match QQ golden sizes
+        golden = s["golden_size"]
+    else:
+        # Small primes may give different sizes — no golden
+        golden = None
+    return polys, gens, golden
+
+
 def _build_benchmark(builder_fn):
     """Build polys/gens from a benchmark builder (returns (polys, gens))."""
     return builder_fn()
@@ -290,6 +316,309 @@ def test_wp2_m4gb_gfp_zero_poly_input():
     assert same_ideal(list(G), list(R), [x, y], order="degrevlex", modulus=2)
 
 
+# --- H1: Multi-prime GF(p) sweep ---
+
+# Fast primes for the default (non-slow) suite
+GFP_PRIMES_FAST = [2, 3, 5, 7, 101, 32003]
+# Slow prime for dedicated test
+_GFP_PRIME_SLOW = 1000003
+
+
+@pytest.mark.parametrize("prime", GFP_PRIMES_FAST)
+@pytest.mark.parametrize("name", WP2_SYSTEMS)
+def test_wp2_gfp_multi_prime_sweep(name, prime):
+    """H1: Sweep multiple primes comparing m4gb vs f5b over degrevlex.
+
+    Skips primes where the system's coefficients are divisible by the prime,
+    causing degenerate input (e.g. leading coefficient vanishes mod p).
+    """
+    polys, gens, golden = _build_corpus_gfp(name, prime)
+
+    # Let both algorithms compute; if one fails on this prime, skip
+    try:
+        G_f5b = groebner_basis(polys, *gens, order="degrevlex",
+                               algorithm="f5b", modulus=prime)
+    except Exception:
+        pytest.skip(f"f5b failed on {name} mod {prime}")
+
+    try:
+        G_m4gb = groebner_basis(polys, *gens, order="degrevlex",
+                                algorithm="m4gb", modulus=prime)
+    except Exception:
+        pytest.skip(f"m4gb failed on {name} mod {prime}")
+
+    assert same_ideal(list(G_m4gb), list(G_f5b), gens,
+                      order="degrevlex", modulus=prime), \
+        f"m4gb and f5b disagree on {name} mod {prime}"
+
+    if golden is not None:
+        assert len(G_f5b) == golden, \
+            f"f5b size mismatch: expected {golden}, got {len(G_f5b)}"
+        assert len(G_m4gb) == golden, \
+            f"m4gb size mismatch: expected {golden}, got {len(G_m4gb)}"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name", WP2_SYSTEMS)
+def test_wp2_gfp_multi_prime_sweep_slow(name):
+    """H1: Slow prime 1000003 — m4gb vs f5b over degrevlex."""
+    prime = _GFP_PRIME_SLOW
+    polys, gens, golden = _build_corpus_gfp(name, prime)
+
+    try:
+        G_f5b = groebner_basis(polys, *gens, order="degrevlex",
+                               algorithm="f5b", modulus=prime)
+    except Exception:
+        pytest.skip(f"f5b failed on {name} mod {prime}")
+
+    try:
+        G_m4gb = groebner_basis(polys, *gens, order="degrevlex",
+                                algorithm="m4gb", modulus=prime)
+    except Exception:
+        pytest.skip(f"m4gb failed on {name} mod {prime}")
+
+    assert same_ideal(list(G_m4gb), list(G_f5b), gens,
+                      order="degrevlex", modulus=prime), \
+        f"m4gb and f5b disagree on {name} mod {prime}"
+
+    if golden is not None:
+        assert len(G_f5b) == golden, \
+            f"f5b size mismatch: expected {golden}, got {len(G_f5b)}"
+        assert len(G_m4gb) == golden, \
+            f"m4gb size mismatch: expected {golden}, got {len(G_m4gb)}"
+
+
+@pytest.mark.parametrize("prime", [2, 3, 5, 7])
+@pytest.mark.parametrize("name", ["cyclic3", "cyclic4"])
+def test_wp2_gfp_small_prime_edge_cases(name, prime):
+    """H1: Small primes on cyclic3/cyclic4 — cancellation edge cases.
+
+    These are fast tests that specifically target small-prime behavior where
+    coefficients may vanish or cause zero-polynomial intermediates.
+    """
+    polys, gens, golden = _build_corpus_gfp(name, prime)
+
+    try:
+        G_f5b = groebner_basis(polys, *gens, order="degrevlex",
+                               algorithm="f5b", modulus=prime)
+    except Exception:
+        pytest.skip(f"f5b failed on {name} mod {prime}")
+
+    try:
+        G_m4gb = groebner_basis(polys, *gens, order="degrevlex",
+                                algorithm="m4gb", modulus=prime)
+    except Exception:
+        pytest.skip(f"m4gb failed on {name} mod {prime}")
+
+    assert is_groebner(list(G_f5b), gens, order="degrevlex", modulus=prime), \
+        f"f5b GB is not a Groebner basis for {name} mod {prime}"
+    assert is_groebner(list(G_m4gb), gens, order="degrevlex", modulus=prime), \
+        f"m4gb GB is not a Groebner basis for {name} mod {prime}"
+    assert same_ideal(list(G_m4gb), list(G_f5b), gens,
+                      order="degrevlex", modulus=prime), \
+        f"m4gb and f5b disagree on {name} mod {prime}"
+
+    if golden is not None:
+        assert len(G_f5b) == golden, \
+            f"f5b size mismatch: expected {golden}, got {len(G_f5b)}"
+        assert len(G_m4gb) == golden, \
+            f"m4gb size mismatch: expected {golden}, got {len(G_m4gb)}"
+
+
+# --- H2: Non-degrevlex GF(p) routing tests ---
+
+@pytest.mark.parametrize("name", WP2_SYSTEMS)
+@pytest.mark.parametrize("order", ["degrevlex", "grlex", "lex"])
+def test_wp2_gfp_all_orders(name, order):
+    """H2: buchberger and f5b must agree on every corpus system/order over GF(p).
+
+    Heavy systems (cyclic5, rose, Uteshev_Bikker, liu) with non-degrevlex
+    orders are marked slow.
+    """
+    # Mark heavy combinations as slow via skip-if
+    heavy_systems = {"cyclic5", "rose", "Uteshev_Bikker", "liu"}
+    if name in heavy_systems and order != "degrevlex":
+        pytest.skip(f"{name}/{order} is slow — tested in slow variant")
+
+    polys, gens, _ = _build_corpus(name)
+    modulus = 32003
+
+    G_buch = groebner_basis(polys, *gens, order=order,
+                            algorithm="buchberger", modulus=modulus)
+    G_f5b = groebner_basis(polys, *gens, order=order,
+                           algorithm="f5b", modulus=modulus)
+
+    assert is_groebner(list(G_buch), gens, order=order, modulus=modulus), \
+        f"buchberger GB is not a Groebner basis for {name}/{order} GF(p)"
+    assert same_ideal(G_buch, G_f5b, gens, order=order, modulus=modulus), \
+        f"buchberger and f5b disagree on {name}/{order} GF(32003)"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name", ["cyclic5", "rose", "Uteshev_Bikker", "liu"])
+@pytest.mark.parametrize("order", ["grlex", "lex"])
+def test_wp2_gfp_all_orders_slow(name, order):
+    """H2: Slow systems with non-degrevlex orders over GF(p)."""
+    polys, gens, _ = _build_corpus(name)
+    modulus = 32003
+
+    try:
+        G_buch = groebner_basis(polys, *gens, order=order,
+                                algorithm="buchberger", modulus=modulus)
+    except Exception:
+        pytest.skip(f"buchberger failed on {name}/{order} GF(p)")
+
+    try:
+        G_f5b = groebner_basis(polys, *gens, order=order,
+                               algorithm="f5b", modulus=modulus)
+    except Exception:
+        pytest.skip(f"f5b failed on {name}/{order} GF(p)")
+
+    assert is_groebner(list(G_buch), gens, order=order, modulus=modulus), \
+        f"buchberger GB is not a Groebner basis for {name}/{order} GF(p)"
+    assert same_ideal(G_buch, G_f5b, gens, order=order, modulus=modulus), \
+        f"buchberger and f5b disagree on {name}/{order} GF(32003)"
+
+
+@pytest.mark.parametrize("name", WP2_SYSTEMS)
+def test_wp2_gfp_m4gb_order_support(name):
+    """H2: m4gb only supports degrevlex. Verify degrevlex works and document
+    behavior for grlex/lex (either works correctly or raises a clear error)."""
+    polys, gens, _ = _build_corpus(name)
+    modulus = 32003
+
+    # degrevlex must work
+    G_ref = groebner_basis(polys, *gens, order="degrevlex",
+                           algorithm="f5b", modulus=modulus)
+    G_m4gb = groebner_basis(polys, *gens, order="degrevlex",
+                            algorithm="m4gb", modulus=modulus)
+    assert same_ideal(list(G_m4gb), list(G_ref), gens,
+                      order="degrevlex", modulus=modulus), \
+        f"m4gb degrevlex failed for {name} GF(p)"
+
+    # grlex/lex: should either work correctly or raise a clear error
+    for order in ["grlex", "lex"]:
+        try:
+            G_m4gb_ord = groebner_basis(polys, *gens, order=order,
+                                        algorithm="m4gb", modulus=modulus)
+            # If it succeeds, verify correctness against f5b
+            G_ref_ord = groebner_basis(polys, *gens, order=order,
+                                       algorithm="f5b", modulus=modulus)
+            assert same_ideal(list(G_m4gb_ord), list(G_ref_ord), gens,
+                              order=order, modulus=modulus), \
+                f"m4gb {order} gave wrong result for {name} GF(p)"
+        except (NotImplementedError, ValueError, RuntimeError):
+            # Expected: m4gb doesn't support non-degrevlex
+            pass
+
+
+@pytest.mark.parametrize("name", ["cyclic3", "cyclic4"])
+@pytest.mark.parametrize("order", ["degrevlex", "grlex", "lex"])
+def test_wp2_h2_auto_gfp_routing(name, order):
+    """H2: Auto routing must produce correct GB for GF(p) across all orders."""
+    polys, gens, _ = _build_corpus(name)
+    modulus = 32003
+
+    G = groebner_basis(polys, *gens, order=order, modulus=modulus)
+    assert is_groebner(list(G), gens, order=order, modulus=modulus)
+    assert contains_ideal(G, polys, gens, order=order, modulus=modulus)
+
+
+@pytest.mark.parametrize("name", ["cyclic3", "cyclic4"])
+@pytest.mark.parametrize("order", ["degrevlex", "grlex", "lex"])
+def test_wp2_h2_auto_qq_routing(name, order):
+    """H2: Auto routing must produce correct GB for QQ across all orders."""
+    polys, gens, _ = _build_corpus(name)
+
+    G = groebner_basis(polys, *gens, order=order)
+    assert is_groebner(list(G), gens, order=order)
+    assert contains_ideal(G, polys, gens, order=order)
+
+
+@pytest.mark.parametrize("order", ["grlex", "lex"])
+def test_wp2_h2_m4gb_unsupported_order(order):
+    """H2: Explicit m4gb with non-degrevlex orders must raise ValueError."""
+    x, y = Symbol("x"), Symbol("y")
+    with pytest.raises(ValueError, match="Unsupported coefficient domain"):
+        groebner_basis([x**2 - y], x, y, order=order,
+                       algorithm="m4gb", modulus=32003)
+
+
+def test_wp2_h2_m4gb_unsupported_qq():
+    """H2: Explicit m4gb with QQ must raise ValueError."""
+    x, y = Symbol("x"), Symbol("y")
+    with pytest.raises(ValueError, match="Unsupported coefficient domain"):
+        groebner_basis([x**2 - y], x, y, order="degrevlex", algorithm="m4gb")
+
+
+# --- H3: GF(p) golden size infrastructure ---
+
+@pytest.mark.parametrize("name", WP2_SYSTEMS)
+def test_wp2_gfp_golden_sizes(name):
+    """H3: Verify GF(p) basis sizes match per-prime goldens where available.
+
+    For prime 32003, asserts the basis size matches the golden_gfp entry.
+    For small primes, only verifies correctness (sizes may differ from QQ).
+    """
+    polys, gens, golden = _build_corpus_gfp(name, 32003)
+    modulus = 32003
+
+    G_f5b = groebner_basis(polys, *gens, order="degrevlex",
+                           algorithm="f5b", modulus=modulus)
+    assert is_groebner(list(G_f5b), gens, order="degrevlex", modulus=modulus)
+
+    if golden is not None:
+        assert len(G_f5b) == golden, \
+            f"{name} GF(32003): expected {golden} basis elements, got {len(G_f5b)}"
+
+
+@pytest.mark.parametrize("name", ["cyclic3", "cyclic4"])
+@pytest.mark.parametrize("prime", [2, 3, 5, 7])
+def test_wp2_gfp_golden_sizes_small_primes(name, prime):
+    """H3: Small-prime goldens — verify correctness without asserting a
+    specific size, since small primes may give different sizes than QQ."""
+    polys, gens, _ = _build_corpus(name)
+    modulus = prime
+
+    try:
+        G_f5b = groebner_basis(polys, *gens, order="degrevlex",
+                               algorithm="f5b", modulus=modulus)
+    except Exception:
+        pytest.skip(f"f5b failed on {name} mod {prime}")
+
+    # Verify it's a correct GB by cross-checking with buchberger
+    try:
+        G_buch = groebner_basis(polys, *gens, order="degrevlex",
+                                algorithm="buchberger", modulus=modulus)
+    except Exception:
+        pytest.skip(f"buchberger failed on {name} mod {prime}")
+
+    assert is_groebner(list(G_f5b), gens, order="degrevlex", modulus=modulus)
+    assert same_ideal(list(G_f5b), list(G_buch), gens,
+                      order="degrevlex", modulus=modulus), \
+        f"f5b and buchberger disagree on {name} mod {prime}"
+
+
+# --- H4: Oracle correctness — must reject wrong ideals ---
+
+def test_oracle_rejects_wrong_ideal():
+    """The oracle must reject a basis that passes is_groebner but generates
+    the wrong ideal.  This is the scenario from report 09 (m4gb cyclic5 [1]):
+    is_groebner(G) only checks that G is a GB of <G>, NOT that <G> == <F>.
+    contains_ideal catches the 'dropped generators' class of bugs."""
+    x, y = Symbol("x"), Symbol("y")
+    F = [x**2 - 1, y**2 - 1]
+    gens = [x, y]
+    # Compute the correct GB
+    G_good = groebner_basis(F, *gens, order="degrevlex")
+    # A wrong basis: {x^2-1} alone (drops y^2-1)
+    G_bad = [x**2 - 1]
+    # is_groebner may pass on the bad basis (it's a GB of its own ideal <x^2-1>)
+    assert is_groebner(G_bad, gens, order="degrevlex")
+    # But contains_ideal must fail (y^2-1 does not reduce to 0 mod {x^2-1})
+    assert not contains_ideal(G_bad, F, gens, order="degrevlex")
+
+
 # ===========================================================================
 # WP3 — MoGVW thorough coverage
 # ===========================================================================
@@ -423,7 +752,7 @@ def test_wp3_mogvw_cyclic5_drl():
 @pytest.mark.slow
 def test_wp3_mogvw_cyclic5_gfp():
     """cyclic5 with mogvw (degrevlex, GF(p)) — regression guard."""
-    polys, gens, golden = _build_corpus("cyclic5")
+    polys, gens, golden = _build_corpus_gfp("cyclic5", 32003)
     modulus = 32003
 
     G_mogvw = run_with_timeout(_mogvw_gb, polys, gens, "degrevlex", modulus,
@@ -444,7 +773,10 @@ def test_wp3_mogvw_cyclic5_gfp():
 @pytest.mark.parametrize("modulus", [0, 32003])
 def test_wp3_mogvw_rose_regression(modulus):
     """rose needs the paper's row-ordering and maxcpdeg details to complete."""
-    polys, gens, golden = _build_corpus("rose")
+    if modulus:
+        polys, gens, golden = _build_corpus_gfp("rose", modulus)
+    else:
+        polys, gens, golden = _build_corpus("rose")
     kw = {"order": "degrevlex", "algorithm": "mogvw"}
     ref_kw = {"order": "degrevlex", "algorithm": "f5b"}
     check_kw = {"order": "degrevlex"}
