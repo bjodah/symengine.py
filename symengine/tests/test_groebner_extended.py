@@ -441,26 +441,22 @@ def test_wp3_mogvw_cyclic5_gfp():
                       modulus=modulus)
 
 
-# --- Known mogvw bugs ---
+@pytest.mark.parametrize("modulus", [0, 32003])
+def test_wp3_mogvw_rose_regression(modulus):
+    """rose needs the paper's row-ordering and maxcpdeg details to complete."""
+    polys, gens, golden = _build_corpus("rose")
+    kw = {"order": "degrevlex", "algorithm": "mogvw"}
+    ref_kw = {"order": "degrevlex", "algorithm": "f5b"}
+    check_kw = {"order": "degrevlex"}
+    if modulus:
+        kw["modulus"] = ref_kw["modulus"] = check_kw["modulus"] = modulus
 
-@pytest.mark.xfail(reason="known limitation: mogvw derives no new basis "
-                          "elements for systems whose generator lms have no "
-                          "low-degree common multiples (rose); see report 14 "
-                          "and the header comment in groebner_mogvw.h",
-                   strict=True)
-def test_wp3_mogvw_rose_broken():
-    """mogvw fails verification on rose (degrevlex, QQ).
+    G = groebner_basis(polys, *gens, **kw)
+    G_ref = groebner_basis(polys, *gens, **ref_kw)
 
-    Root cause (report 14): reduced matrix rows landing on covered monomials
-    are discarded by the signature comparison in mogvw_update (signatures are
-    max-approximated in mogvw_eliminate), so for rose no new primitive cover
-    is ever created.  Structural; shared with the reference implementation.
-    The engine's self-verification gate rejects the result with a clean
-    RuntimeError instead of returning a silently wrong basis.
-    """
-    polys, gens, _ = _build_corpus("rose")
-    G = groebner_basis(polys, *gens, order="degrevlex", algorithm="mogvw")
-    assert is_groebner(list(G), gens, order="degrevlex")
+    assert is_groebner(list(G), gens, **check_kw)
+    assert len(G) == golden
+    assert same_ideal(G, G_ref, gens, order="degrevlex", modulus=modulus)
 
 
 def test_wp3_mogvw_lex():
