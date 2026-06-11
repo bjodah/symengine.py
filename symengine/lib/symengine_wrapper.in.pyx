@@ -491,7 +491,7 @@ def sympy2symengine(a, raise_error=False):
             return ImmutableDenseMatrix(row, col, v)
         else:
             raise NotImplementedError
-    elif isinstance(a, sympy.polys.domains.modularinteger.ModularInteger):
+    elif isinstance(a, sympy.polys.domains.modularinteger.ModularInteger) or type(a).__name__ == 'nmod':
         return PyNumber(a, sympy_module)
     elif sympy.__version__ > '1.0':
         if isinstance(a, sympy.acsch):

@@ -109,8 +109,27 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
     ctypedef map[RCP[Integer], unsigned] map_integer_uint "SymEngine::map_integer_uint"
     cdef struct RCPIntegerKeyLess
     cdef struct RCPBasicKeyLess
-    ctypedef set[rcp_const_basic] set_basic "SymEngine::set_basic"
-    ctypedef multiset[rcp_const_basic] multiset_basic "SymEngine::multiset_basic"
+    cdef cppclass set_basic "SymEngine::set_basic":
+        cppclass iterator:
+            rcp_const_basic& operator*()
+            iterator operator++() nogil
+            iterator operator--() nogil
+            bint operator==(iterator) nogil
+            bint operator!=(iterator) nogil
+        iterator begin() nogil
+        iterator end() nogil
+        iterator insert(rcp_const_basic&) nogil
+
+    cdef cppclass multiset_basic "SymEngine::multiset_basic":
+        cppclass iterator:
+            rcp_const_basic& operator*()
+            iterator operator++() nogil
+            iterator operator--() nogil
+            bint operator==(iterator) nogil
+            bint operator!=(iterator) nogil
+        iterator begin() nogil
+        iterator end() nogil
+        iterator insert(rcp_const_basic&) nogil
 
     cdef cppclass Basic:
         string __str__() nogil except +
