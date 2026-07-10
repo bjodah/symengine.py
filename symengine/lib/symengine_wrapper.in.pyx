@@ -5745,6 +5745,47 @@ cdef str _algorithm_to_str(symengine.GroebnerAlgorithm algo):
         return 'auto'
 
 
+cdef str _solve_outcome_to_str(symengine.SolveOutcome outcome):
+    if outcome == symengine.SolveComplete:
+        return 'complete'
+    elif outcome == symengine.SolveIncomplete:
+        return 'incomplete'
+    elif outcome == symengine.SolveNotZeroDimensional:
+        return 'not_zero_dimensional'
+    else:
+        return 'failed'
+
+
+cdef dict _groebner_stats_to_dict(symengine.GroebnerStats& stats):
+    return {
+        'input_polys': stats.input_polys,
+        'output_polys': stats.output_polys,
+        's_pairs_processed': stats.s_pairs_processed,
+        'reductions_to_zero': stats.reductions_to_zero,
+        'max_basis_size': stats.max_basis_size,
+        # F5B / MoGVW signature-based counters
+        'rejected_by_syzygy': stats.rejected_by_syzygy,
+        'rejected_by_rewritten': stats.rejected_by_rewritten,
+        'f5_reductions': stats.f5_reductions,
+        'labeled_monomials_lifted': stats.labeled_monomials_lifted,
+        'rejected_by_lcm': stats.rejected_by_lcm,
+        'collisions_resolved': stats.collisions_resolved,
+        # M4GB / F4 matrix counters
+        'matrices_built': stats.matrices_built,
+        'max_matrix_rows_seen': stats.max_matrix_rows_seen,
+        'max_matrix_columns_seen': stats.max_matrix_columns_seen,
+        'rows_reduced_to_zero': stats.rows_reduced_to_zero,
+        'polymatrix_entries_built': stats.polymatrix_entries_built,
+        'polymatrix_generation': stats.polymatrix_generation,
+        # Polynomial-system solver orchestration counters
+        'solver_attempts': stats.solver_attempts,
+        'solver_failed_attempts': stats.solver_failed_attempts,
+        # Symbolic coefficients assumed nonzero during the computation.
+        'genericity_assumptions': vec_basic_to_tuple(
+            stats.genericity_assumptions),
+    }
+
+
 cdef symengine.GroebnerOptions _build_groebner_options(dict kwargs) except *:
     cdef symengine.GroebnerOptions opts
     opts.order = _parse_monomial_order(kwargs.get('order'))
@@ -5898,6 +5939,9 @@ cdef class GroebnerBasis:
         source_result.variables = _pylist_to_vec_sym(self._gens)
         source_result.order = _parse_monomial_order(self._order)
         source_result.status = symengine.GBSuccess
+        source_result.modulus = self._modulus
+        source_result.stats.genericity_assumptions = iter_to_vec_basic(
+            list(self._stats.get('genericity_assumptions', ())))
         cdef symengine.GroebnerResult target_result
         with nogil:
             target_result = symengine.fglm_convert(source_result, target, opts)
@@ -5910,11 +5954,14 @@ cdef class GroebnerBasis:
         for i in range(target_result.basis.size()):
             basis_polys.append(c2py(<rcp_const_basic>target_result.basis[i]))
         cdef list result_gens = _vec_sym_to_list(target_result.variables)
+        cdef dict target_stats = dict(self._stats)
+        target_stats['genericity_assumptions'] = vec_basic_to_tuple(
+            target_result.stats.genericity_assumptions)
         order_str = _monomial_order_to_str(target_result.order)
         algo_str = _algorithm_to_str(target_result.selected_algorithm)
         return GroebnerBasis(basis_polys, result_gens, order=order_str,
                              algorithm=algo_str, modulus=self._modulus,
-                             stats=dict(self._stats),
+                             stats=target_stats,
                              original_input=self._original_input)
 
     def specialize(self, substitutions):
@@ -6056,31 +6103,7 @@ def groebner_basis(polys, *gens, **kwargs):
     cdef list result_gens = _vec_sym_to_list(result.variables)
     order_str = _monomial_order_to_str(result.order)
     algo_str = _algorithm_to_str(result.selected_algorithm)
-    stats = {
-        'input_polys': result.stats.input_polys,
-        'output_polys': result.stats.output_polys,
-        's_pairs_processed': result.stats.s_pairs_processed,
-        'reductions_to_zero': result.stats.reductions_to_zero,
-        'max_basis_size': result.stats.max_basis_size,
-        # F5B / MoGVW signature-based counters
-        'rejected_by_syzygy': result.stats.rejected_by_syzygy,
-        'rejected_by_rewritten': result.stats.rejected_by_rewritten,
-        'f5_reductions': result.stats.f5_reductions,
-        'labeled_monomials_lifted': result.stats.labeled_monomials_lifted,
-        'rejected_by_lcm': result.stats.rejected_by_lcm,
-        'collisions_resolved': result.stats.collisions_resolved,
-        # M4GB / F4 matrix counters
-        'matrices_built': result.stats.matrices_built,
-        'max_matrix_rows_seen': result.stats.max_matrix_rows_seen,
-        'max_matrix_columns_seen': result.stats.max_matrix_columns_seen,
-        'rows_reduced_to_zero': result.stats.rows_reduced_to_zero,
-        'polymatrix_entries_built': result.stats.polymatrix_entries_built,
-        'polymatrix_generation': result.stats.polymatrix_generation,
-        # Parametric (symbolic-coefficient) genericity assumptions, as expressions
-        # that were assumed nonzero during the computation.
-        'genericity_assumptions': vec_basic_to_tuple(
-            result.stats.genericity_assumptions),
-    }
+    stats = _groebner_stats_to_dict(result.stats)
     return GroebnerBasis(basis_polys, result_gens, order=order_str,
                          algorithm=algo_str, modulus=kwargs.get('modulus', 0),
                          stats=stats, original_input=poly_list)
@@ -6140,10 +6163,76 @@ def solve_poly_system(equations, *gens, **kwargs):
     cdef symengine.vec_basic c_eqs = iter_to_vec_basic(list(equations))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
     cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
+    if opts.modulus != 0:
+        raise ValueError(
+            "solve_poly_system does not support roots over finite fields")
     cdef RCP[const symengine.Set] result
     with nogil:
         result = symengine.solve_poly_system(c_eqs, c_vars, opts)
     return c2py(<rcp_const_basic>result)
+
+
+class PolySolveResult:
+    """Result of :func:`solve_poly_system_ex`.
+
+    ``outcome`` is one of ``'complete'``, ``'incomplete'``,
+    ``'not_zero_dimensional'``, or ``'failed'``.  A complete result is an
+    exact description of the finite solution set on the branch where every
+    reported assumption is nonzero; an incomplete result only claims that
+    every returned point is a solution on that branch.
+    """
+
+    def __init__(self, solutions, outcome, assumptions=(),
+                 selected_expression=None, stats=None):
+        self.solutions = solutions
+        self.outcome = outcome
+        self.assumptions = tuple(assumptions)
+        self.selected_expression = selected_expression
+        self.stats = dict(stats or {})
+
+    @property
+    def is_complete(self):
+        return self.outcome == 'complete'
+
+    @property
+    def genericity_assumptions(self):
+        """Alias spelling out that each assumption is a nonzero condition."""
+        return self.assumptions
+
+    def __repr__(self):
+        return (f"PolySolveResult(solutions={self.solutions!r}, "
+                f"outcome={self.outcome!r}, assumptions={self.assumptions!r}, "
+                f"selected_expression={self.selected_expression!r})")
+
+
+def solve_poly_system_ex(equations, *gens, **kwargs):
+    """Solve a polynomial system and report whether the result is complete.
+
+    Unlike :func:`solve_poly_system`, this exposes the solver's soundness
+    verdict and all symbolic coefficient expressions assumed nonzero during
+    the computation.  ``modulus`` is rejected because the solver currently
+    computes roots over characteristic zero.
+    """
+    cdef symengine.vec_basic c_eqs = iter_to_vec_basic(list(equations))
+    cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
+    cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
+    if opts.modulus != 0:
+        raise ValueError(
+            "solve_poly_system_ex does not support roots over finite fields")
+    cdef symengine.PolySolveResult result
+    cdef rcp_const_basic selected
+    with nogil:
+        result = symengine.solve_poly_system_ex(c_eqs, c_vars, opts)
+    selected = result.selected_expression
+    selected_py = None
+    if not selected.is_null():
+        selected_py = c2py(selected)
+    return PolySolveResult(
+        c2py(<rcp_const_basic>result.solutions),
+        _solve_outcome_to_str(result.outcome),
+        vec_basic_to_tuple(result.genericity_assumptions),
+        selected_py,
+        _groebner_stats_to_dict(result.stats))
 
 
 def cse(exprs):

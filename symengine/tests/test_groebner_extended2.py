@@ -10,11 +10,11 @@ import pytest
 
 from symengine import (
     Symbol, groebner_basis, GroebnerBasis, Integer, Rational,
-    FiniteSet, EmptySet, sympify,
+    FiniteSet, EmptySet, sympify, PolySolveResult,
 )
 from symengine.lib.symengine_wrapper import (
     normal_form, is_groebner, is_reduced_basis,
-    is_zero_dimensional, solve_poly_system,
+    is_zero_dimensional, solve_poly_system, solve_poly_system_ex,
 )
 from symengine.tests.groebner_oracle import (
     same_ideal, contains_ideal, assert_correct_gb,
@@ -198,6 +198,87 @@ def _assert_fully_instantiated(sol, gens):
 
 
 class TestWP6SolvePolySystem:
+
+    def test_extended_result_complete_and_compatible(self):
+        x, y = Symbol('x'), Symbol('y')
+        F = [x**2 - 1, y - x]
+        result = solve_poly_system_ex(F, x, y)
+        assert isinstance(result, PolySolveResult)
+        assert result.outcome == 'complete'
+        assert result.is_complete
+        assert result.solutions == solve_poly_system(F, x, y)
+        assert result.assumptions == ()
+        assert result.selected_expression is not None
+        assert isinstance(result.stats, dict)
+        _verify_solutions(F, result.solutions, [x, y])
+
+    def test_extended_result_zaug_generator_collision(self):
+        zaug, y = Symbol('zaug'), Symbol('y')
+        F = [zaug**2 - 1, y - zaug]
+        result = solve_poly_system_ex(F, zaug, y)
+        assert result.outcome == 'complete'
+        assert {tuple(point.args) for point in result.solutions.args} == {
+            (Integer(-1), Integer(-1)),
+            (Integer(1), Integer(1)),
+        }
+        assert solve_poly_system(F, zaug, y) == result.solutions
+
+    def test_extended_result_distinguishes_positive_dimension(self):
+        x, y = Symbol('x'), Symbol('y')
+        result = solve_poly_system_ex([x*y - 1], x, y)
+        assert result.solutions == EmptySet
+        assert result.outcome == 'not_zero_dimensional'
+        assert not result.is_complete
+
+    def test_extended_result_parametric_assumptions(self):
+        x, y, C1, C2 = map(Symbol, ('x', 'y', 'C1', 'C2'))
+        F = [C1*x - 1, y - C2*x]
+        result = solve_poly_system_ex(F, x, y)
+        assert result.outcome == 'complete'
+        assert result.assumptions
+        assumption_symbols = set().union(
+            *(assumption.free_symbols for assumption in result.assumptions))
+        assert C1 in assumption_symbols
+        assert result.stats['genericity_assumptions'] == result.assumptions
+        _verify_solutions(F, result.solutions, [x, y])
+
+    def test_extended_result_radical_assumption_normalized(self):
+        """A quadratic-formula denominator sqrt(C1**2 - 4) must be reported
+        as the polynomial condition C1**2 - 4, not as a radical."""
+        x, y, C1 = map(Symbol, ('x', 'y', 'C1'))
+        F = [(C1**2 - 4)*x**2 - 1, y - x]
+        result = solve_poly_system_ex(F, x, y)
+        assert result.outcome == 'complete'
+        assert (C1**2 - 4) in result.assumptions
+        for assumption in result.assumptions:
+            assert 'sqrt' not in str(assumption)
+
+    def test_solver_rejects_finite_field_modulus(self):
+        x = Symbol('x')
+        with pytest.raises(ValueError, match='modulus|characteristic|finite field'):
+            solve_poly_system_ex([x**2 - 1], x, modulus=7)
+        with pytest.raises(ValueError, match='modulus|characteristic|finite field'):
+            solve_poly_system([x**2 - 1], x, modulus=7)
+
+    def test_fglm_records_new_parametric_pivots(self):
+        x, y, K1, K2 = map(Symbol, ('x', 'y', 'K1', 'K2'))
+        F = [x**2 + K1*x*y, x*y + 2*y**3 - K2]
+        source = groebner_basis(F, x, y, order='degrevlex')
+        converted = source.fglm('lex')
+
+        assert source.stats['genericity_assumptions'] == ()
+        assert K2 in converted.stats['genericity_assumptions']
+        assert_correct_gb(F, [x, y], converted, order='lex')
+
+    def test_fglm_preserves_finite_field_modulus(self):
+        x, y = Symbol('x'), Symbol('y')
+        F = [x**2 + y**2 - 1, x*y - 3]
+        converted = groebner_basis(
+            F, x, y, order='degrevlex', modulus=7).fglm('lex')
+
+        assert converted.modulus == 7
+        assert all('/' not in str(poly) for poly in converted.polys)
+        assert is_groebner(converted.polys, [x, y], order='lex', modulus=7)
 
     def test_solve_zero_dim_two_solutions(self):
         x, y = Symbol('x'), Symbol('y')

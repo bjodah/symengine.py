@@ -51,6 +51,7 @@ cdef extern from "<symengine/symengine_rcp.h>" namespace "SymEngine":
 
     cdef cppclass RCP[T]:
         T& operator*() nogil
+        bint is_null() const
         # Not yet supported in Cython:
 #        RCP[T]& operator=(RCP[T] &r_ptr) nogil except +
         void reset() nogil except +
@@ -1007,6 +1008,8 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
         unsigned rows_reduced_to_zero
         unsigned polymatrix_entries_built
         unsigned polymatrix_generation
+        unsigned solver_attempts
+        unsigned solver_failed_attempts
         vec_basic genericity_assumptions
 
     cdef cppclass GroebnerResult "SymEngine::GroebnerResult":
@@ -1016,6 +1019,20 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
         GroebnerStatus status
         GroebnerStats stats
         GroebnerAlgorithm selected_algorithm
+        uint64_t modulus
+
+    cdef enum SolveOutcome "SymEngine::SolveOutcome":
+        SolveComplete "SymEngine::SolveOutcome::Complete"
+        SolveIncomplete "SymEngine::SolveOutcome::Incomplete"
+        SolveNotZeroDimensional "SymEngine::SolveOutcome::NotZeroDimensional"
+        SolveFailed "SymEngine::SolveOutcome::Failed"
+
+    cdef cppclass PolySolveResult "SymEngine::PolySolveResult":
+        RCP[const Set] solutions
+        SolveOutcome outcome
+        vec_basic genericity_assumptions
+        rcp_const_basic selected_expression
+        GroebnerStats stats
 
     GroebnerResult groebner_basis(const vec_basic &polys, const vec_sym &variables, const GroebnerOptions &options) nogil except +
     GroebnerResult fglm_convert(const GroebnerResult &source, MonomialOrder target_order, const GroebnerOptions &options) nogil except +
@@ -1023,6 +1040,7 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
     bint is_groebner(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) nogil except +
     bint is_reduced_basis(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) nogil except +
     bint is_zero_dimensional(const vec_basic &G, const vec_sym &variables, const GroebnerOptions &options) nogil except +
+    PolySolveResult solve_poly_system_ex(const vec_basic &equations, const vec_sym &variables, const GroebnerOptions &options) nogil except +
     RCP[const Set] solve_poly_system(const vec_basic &equations, const vec_sym &variables, const GroebnerOptions &options) nogil except +
 
 cdef extern from "<symengine/tuple.h>" namespace "SymEngine":
