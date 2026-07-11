@@ -5849,6 +5849,126 @@ cdef bint _polys_are_concrete_for_gens(polys, gens):
     return True
 
 
+# --- Positivity-aware assumption classifier -------------------------------
+#
+# classify_assumptions() is a *structural* classifier: it never claims an
+# assumption is 'satisfied' unless the sign conditions supplied by the
+# caller (positive / negative / nonzero symbol sets) mechanically force it.
+# Anything it cannot prove is reported as 'undecidable', including mixed-sign
+# combinations such as a determinant C2*C3 - C4*C1 (report 25 SS3.3(5)): even
+# though every symbol is known positive, the two terms have opposite signs,
+# so no conclusion is drawn.
+
+
+cdef object _factor_sign(factor, set positive, set negative, set nonzero):
+    """Structural sign of a single (non-Add) factor, or None if unknown.
+
+    Returns '+' or '-' when provably one-signed given the caller-supplied
+    sign sets, else None. A bare 'nonzero' symbol has unknown sign. Even
+    integer powers of a nonzero symbol are positive regardless of the base's
+    own sign.
+    """
+    if isinstance(factor, Number):
+        if factor.is_zero:
+            return None
+        return '+' if factor.is_positive else '-'
+    if factor.is_Symbol:
+        if factor in positive:
+            return '+'
+        if factor in negative:
+            return '-'
+        return None
+    if factor.is_Pow:
+        base, exp = factor.base, factor.exp
+        if isinstance(exp, Number) and not exp.is_zero and exp.is_integer:
+            if int(exp) % 2 == 0:
+                # Even power of any known-nonzero base is positive,
+                # regardless of the base's own sign.
+                if _is_satisfied(base, positive, negative, nonzero):
+                    return '+'
+                return None
+            return _factor_sign(base, positive, negative, nonzero)
+        return None
+    if factor.is_Mul:
+        sign = '+'
+        for arg in factor.args:
+            arg_sign = _factor_sign(arg, positive, negative, nonzero)
+            if arg_sign is None:
+                return None
+            if arg_sign == '-':
+                sign = '-' if sign == '+' else '+'
+        return sign
+    return None
+
+
+cdef bint _is_satisfied(expr, set positive, set negative, set nonzero):
+    """Whether ``expr`` is provably nonzero given the caller's sign sets."""
+    if expr.is_Symbol:
+        return expr in positive or expr in negative or expr in nonzero
+    if isinstance(expr, Number):
+        return not expr.is_zero
+    if expr.is_Mul:
+        return all(_is_satisfied(factor, positive, negative, nonzero)
+                    for factor in expr.args)
+    if expr.is_Pow:
+        exp = expr.exp
+        if isinstance(exp, Number) and not exp.is_zero:
+            return _is_satisfied(expr.base, positive, negative, nonzero)
+        return False
+    if expr.is_Add:
+        return _add_sign(expr, positive, negative, nonzero) is not None
+    return False
+
+
+cdef object _add_sign(expr, set positive, set negative, set nonzero):
+    """Common sign of every term of an Add, or None if not all agree.
+
+    Each term is itself a Number, Symbol, Pow, or Mul of a (possibly
+    implicit) numeric coefficient with such factors; _factor_sign already
+    handles all of those uniformly (a Mul's sign is the product of its
+    factors' signs). If any term has unknown sign, or the terms disagree in
+    sign, the whole Add is undecidable.
+    """
+    cdef object overall = None
+    cdef object term_sign
+    for term in expr.args:
+        term_sign = _factor_sign(term, positive, negative, nonzero)
+        if term_sign is None:
+            return None
+        if overall is None:
+            overall = term_sign
+        elif overall != term_sign:
+            return None
+    return overall
+
+
+def classify_assumptions(assumptions, positive=(), negative=(), nonzero=()):
+    """Classify genericity assumptions given known sign conditions.
+
+    Each of ``positive``, ``negative``, ``nonzero`` is an iterable of symbols
+    the caller guarantees satisfy that sign condition. Returns a dict with
+    keys ``'satisfied'`` and ``'undecidable'``, each a list of the input
+    assumptions sorted into that bucket. Classification is structural and
+    conservative: an assumption is only ever reported 'satisfied' when it is
+    mechanically implied by the supplied sign sets; anything else --
+    including mixed-sign combinations such as a determinant expression -- is
+    'undecidable'.
+    """
+    cdef set positive_set = {sympify(s) for s in positive}
+    cdef set negative_set = {sympify(s) for s in negative}
+    cdef set nonzero_set = {sympify(s) for s in nonzero}
+    cdef list satisfied = []
+    cdef list undecidable = []
+    cdef object assumption
+    for assumption in assumptions:
+        expr = sympify(assumption)
+        if _is_satisfied(expr, positive_set, negative_set, nonzero_set):
+            satisfied.append(assumption)
+        else:
+            undecidable.append(assumption)
+    return {'satisfied': satisfied, 'undecidable': undecidable}
+
+
 cdef class GroebnerBasis:
     cdef list _polys
     cdef list _gens
@@ -6060,6 +6180,16 @@ cdef class GroebnerBasis:
             poly.thisptr, c_G, c_vars, opts)
         return c2py(result)
 
+    def classify_assumptions(self, positive=(), negative=(), nonzero=()):
+        """Classify this basis's recorded genericity assumptions.
+
+        See :func:`classify_assumptions` for the classification rules. The
+        assumptions classified are ``self.stats['genericity_assumptions']``.
+        """
+        assumptions = self._stats.get('genericity_assumptions', ())
+        return classify_assumptions(assumptions, positive=positive,
+                                    negative=negative, nonzero=nonzero)
+
 
 def groebner_basis(polys, *gens, **kwargs):
     """Compute a Groebner basis for a system of polynomials.
@@ -6203,6 +6333,15 @@ class PolySolveResult:
     def genericity_assumptions(self):
         """Alias spelling out that each assumption is a nonzero condition."""
         return self.assumptions
+
+    def classify_assumptions(self, positive=(), negative=(), nonzero=()):
+        """Classify this result's recorded genericity assumptions.
+
+        See :func:`classify_assumptions` for the classification rules. The
+        assumptions classified are ``self.assumptions``.
+        """
+        return classify_assumptions(self.assumptions, positive=positive,
+                                    negative=negative, nonzero=nonzero)
 
     def __repr__(self):
         return (f"PolySolveResult(solutions={self.solutions!r}, "
