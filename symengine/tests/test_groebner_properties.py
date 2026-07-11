@@ -384,32 +384,13 @@ class TestParametricSolverProperty:
             assert len(result_concrete.solutions.args) == \
                 len(result.solutions.args)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="genuine solve_poly_system_ex gap: for the cross-coupled "
-               "fully-parametric linear system "
-               "[C1*x + C2*y - 1, C3*x + C4*y - 1] (2 equations, 2 unknowns, "
-               "4 independent symbolic coefficients spread across both "
-               "equations), solve_poly_system_ex reports outcome='complete' "
-               "with genericity_assumptions=(C2*C3-C4*C1, C1, C3, "
-               "C2*C3**2-C4*C1*C3) -- i.e. it correctly detects the "
-               "non-degeneracy condition C2*C3-C4*C1 != 0 -- yet returns "
-               "solutions=EmptySet.  The underlying parametric Groebner "
-               "basis (groebner_basis(F, x, y, order='degrevlex')) is "
-               "correct (a linear triangular basis for x, y in terms of "
-               "C1..C4); concrete instantiations (e.g. C1=2,C2=3,C3=1,C4=-1) "
-               "solve fine via solve_poly_system_ex and give exactly 1 "
-               "solution as expected for a nonsingular 2x2 linear system.  "
-               "So this is a real bug in the lex-basis-to-solution "
-               "extraction path (extract_univariate_linear_shape_impl / "
-               "evaluate_linear_assignments in symengine/polys/groebner.cpp) "
-               "for the case where the auxiliary/root variable's linear "
-               "back-substitution for BOTH x and y stays coupled through "
-               "divisions by the same non-diagonal pivot -- not a Groebner "
-               "basis correctness bug.  Minimized reproducer: "
-               "solve_poly_system_ex([C1*x+C2*y-1, C3*x+C4*y-1], x, y) "
-               "returns (outcome='complete', solutions=EmptySet) instead of "
-               "the expected 1-point solution set.")
+    # Regression test: this used to return (outcome='complete',
+    # solutions=EmptySet) for the cross-coupled fully-parametric linear
+    # system, because the residual check expanded the substituted equations
+    # without cancelling rational-function quotients (C1*C4/D - C2*C3/D - 1
+    # with D = C1*C4 - C2*C3 stayed structurally nonzero), rejecting the
+    # genuine solution and then labelling the empty set Complete. Fixed by
+    # testing the expanded numerator in solve_poly_system_attempt.
     def test_linear_cross_coupled_c1_c4(self):
         x, y = Symbol("x"), Symbol("y")
         C1, C2, C3, C4 = Symbol("C1"), Symbol("C2"), Symbol("C3"), Symbol("C4")
