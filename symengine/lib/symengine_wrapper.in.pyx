@@ -5801,8 +5801,13 @@ cdef symengine.GroebnerOptions _build_groebner_options(dict kwargs) except *:
     opts.max_reduction_steps = kwargs.get('max_reduction_steps', 0)
     opts.max_milliseconds = kwargs.get('max_milliseconds', 0)
     opts.max_degree = kwargs.get('max_degree', 0)
+    opts.max_coefficient_ops = kwargs.get('max_coefficient_ops', 0)
     opts.track_genericity_assumptions = kwargs.get('track_genericity', True)
-    opts.cancellation_check_interval = 1024
+    # Poll cadence for the poll-gated checks (currently only
+    # max_coefficient_ops; see ComputationCheckpoint::should_poll). Default
+    # matches the previously-hardcoded value, so existing behavior is
+    # unchanged unless a caller opts in to a finer interval.
+    opts.cancellation_check_interval = kwargs.get('cancellation_check_interval', 1024)
     return opts
 
 

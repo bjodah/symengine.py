@@ -986,6 +986,7 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
         unsigned max_s_pairs
         unsigned max_reduction_steps
         unsigned max_milliseconds
+        unsigned max_coefficient_ops
         uint64_t modulus
         unsigned max_degree
         bint track_genericity_assumptions
