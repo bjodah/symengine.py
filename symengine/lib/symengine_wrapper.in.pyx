@@ -5769,6 +5769,9 @@ cdef dict _groebner_stats_to_dict(symengine.GroebnerStats& stats):
         'f5_reductions': stats.f5_reductions,
         'labeled_monomials_lifted': stats.labeled_monomials_lifted,
         'rejected_by_lcm': stats.rejected_by_lcm,
+        # FGLM order-conversion counter (staircase-construction normal-form
+        # reduction steps; zero for a plain groebner_basis run)
+        'fglm_reductions': stats.fglm_reductions,
         # M4GB / F4 matrix counters
         'matrices_built': stats.matrices_built,
         'max_matrix_rows_seen': stats.max_matrix_rows_seen,
