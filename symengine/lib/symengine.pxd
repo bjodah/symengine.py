@@ -1002,7 +1002,6 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
         unsigned f5_reductions
         unsigned labeled_monomials_lifted
         unsigned rejected_by_lcm
-        unsigned collisions_resolved
         unsigned matrices_built
         unsigned max_matrix_rows_seen
         unsigned max_matrix_columns_seen

@@ -206,3 +206,32 @@ def test_is_reduced_basis_max_milliseconds_on_fresh_thread():
     # regression is that the call completes rather than raising a spurious
     # resource-limit error on a fresh thread.
     assert _run_in_fresh_thread(call) in (True, False)
+
+
+# ---------------------------------------------------------------------------
+# P1-7 -- non-polynomial input (e.g. x**-1) used to make parse_term raise a
+# plain SymEngineException from has_supported_coefficient_domain_expanded's
+# validation call in groebner_basis, which ran outside the try block that
+# translates internal exceptions to a GroebnerStatus. That meant the
+# status-based C++ API threw instead of returning UnsupportedCoefficientDomain
+# like it does for every other unsupported-domain case, and on the Python
+# side it surfaced as a bare RuntimeError (Cython's default `except +`
+# translation) rather than the usual ValueError("Unsupported coefficient
+# domain...") path. groebner_basis now catches that internally and returns
+# the status, so Python gets the same ValueError as any other unsupported
+# domain.
+# ---------------------------------------------------------------------------
+
+
+def test_groebner_basis_rejects_negative_exponent():
+    x, y = Symbol("x"), Symbol("y")
+    with pytest.raises(ValueError, match="Unsupported coefficient domain"):
+        groebner_basis([x**-1 - y], x, y)
+
+
+def test_groebner_basis_rejects_non_integer_exponent():
+    from symengine import Rational
+
+    x, y = Symbol("x"), Symbol("y")
+    with pytest.raises(ValueError, match="Unsupported coefficient domain"):
+        groebner_basis([x ** Rational(1, 2) - y], x, y)

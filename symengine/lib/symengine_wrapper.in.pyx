@@ -5769,7 +5769,6 @@ cdef dict _groebner_stats_to_dict(symengine.GroebnerStats& stats):
         'f5_reductions': stats.f5_reductions,
         'labeled_monomials_lifted': stats.labeled_monomials_lifted,
         'rejected_by_lcm': stats.rejected_by_lcm,
-        'collisions_resolved': stats.collisions_resolved,
         # M4GB / F4 matrix counters
         'matrices_built': stats.matrices_built,
         'max_matrix_rows_seen': stats.max_matrix_rows_seen,
