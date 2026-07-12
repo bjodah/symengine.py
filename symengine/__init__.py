@@ -35,6 +35,7 @@ from .lib.symengine_wrapper import (
     groebner_basis, GroebnerBasis, normal_form,
     is_groebner, is_reduced_basis, is_zero_dimensional, solve_poly_system,
     solve_poly_system_ex, PolySolveResult, classify_assumptions,
+    CancellationToken,
     Tuple,
 )
 

@@ -6,7 +6,7 @@ from cpython.ref cimport PyObject
 from libcpp.pair cimport pair
 from libcpp.set cimport set
 from libcpp.unordered_map cimport unordered_map
-from libc.stdint cimport uint64_t
+from libc.stdint cimport uint64_t, uint32_t
 
 cdef extern from "<set>" namespace "std":
     # Cython's libcpp.set does not support multiset in 0.29.x
@@ -955,6 +955,35 @@ cdef extern from "<symengine/solve.h>" namespace "SymEngine":
     cdef RCP[const Set] solve(rcp_const_basic &f, RCP[const Symbol] &sym, RCP[const Set] &domain) nogil except +
     cdef vec_basic linsolve(const vec_basic &eqs, const vec_sym &syms) nogil except +
 
+cdef extern from "<symengine/computation_limits.h>" namespace "SymEngine":
+    cdef cppclass ComputationLimits "SymEngine::ComputationLimits":
+        size_t max_spairs_processed
+        size_t max_spairs_generated
+        size_t max_basis_size
+        size_t max_basis_total_terms
+        size_t max_polynomial_terms
+        int max_leading_degree
+        size_t max_reduction_steps
+        size_t max_staircase_size
+        size_t max_frontier_size
+        size_t max_linear_algebra_pivots
+        size_t max_coefficient_ops
+        uint64_t max_duration_ms
+        uint32_t poll_interval
+
+    cdef cppclass CancellationToken "SymEngine::CancellationToken":
+        pass
+
+    cdef cppclass AtomicCancellationToken "SymEngine::AtomicCancellationToken" (CancellationToken):
+        AtomicCancellationToken() nogil except +
+        void cancel() nogil except +
+        void reset() nogil except +
+        bint is_cancelled() nogil except +
+
+    cdef cppclass ComputationControl "SymEngine::ComputationControl":
+        const ComputationLimits *limits
+        const CancellationToken *cancellation
+
 cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
     cdef enum MonomialOrder "SymEngine::MonomialOrder":
         Lex "SymEngine::MonomialOrder::Lex"
@@ -967,6 +996,13 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
         MoGVW "SymEngine::GroebnerAlgorithm::MoGVW"
         M4GB "SymEngine::GroebnerAlgorithm::M4GB"
         Auto "SymEngine::GroebnerAlgorithm::Auto"
+
+    cdef enum GroebnerNormalization "SymEngine::GroebnerNormalization":
+        NormMonic "SymEngine::GroebnerNormalization::Monic"
+        NormPrimitive "SymEngine::GroebnerNormalization::Primitive"
+
+    cdef cppclass GroebnerCancellationToken "SymEngine::GroebnerCancellationToken" (AtomicCancellationToken):
+        GroebnerCancellationToken() nogil except +
 
     cdef enum GroebnerStatus "SymEngine::GroebnerStatus":
         GBSuccess "SymEngine::GroebnerStatus::Success"
@@ -983,6 +1019,8 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
         bint interreduce_input
         bint sort_output
         unsigned cancellation_check_interval
+        const GroebnerCancellationToken *cancellation_token
+        const ComputationControl *control
         unsigned max_s_pairs
         unsigned max_reduction_steps
         unsigned max_milliseconds
@@ -990,6 +1028,7 @@ cdef extern from "<symengine/polys/groebner.h>" namespace "SymEngine":
         uint64_t modulus
         unsigned max_degree
         bint track_genericity_assumptions
+        GroebnerNormalization normalization
 
     cdef cppclass GroebnerStats "SymEngine::GroebnerStats":
         unsigned input_polys

@@ -5788,8 +5788,106 @@ cdef dict _groebner_stats_to_dict(symengine.GroebnerStats& stats):
     }
 
 
-cdef symengine.GroebnerOptions _build_groebner_options(dict kwargs) except *:
+cdef symengine.GroebnerNormalization _parse_normalization(normalize) except *:
+    if normalize is None or normalize == 'monic':
+        return symengine.NormMonic
+    elif normalize == 'primitive':
+        return symengine.NormPrimitive
+    else:
+        raise ValueError(f"Unknown normalize option: {normalize!r}. "
+                         f"Supported: 'monic', 'primitive'")
+
+
+# The full set of keyword arguments _build_groebner_options[_with_holder]
+# recognizes. Kept in sync by hand with the .get()/.pop() calls below;
+# anything not in this set raises TypeError (P2-1). Deliberately NOT
+# exposed: max_matrix_rows, max_matrix_columns, matrix_batch_size,
+# verify_with_buchberger (see docs/plans/27-MERGE-READINESS-WORK-ITEMS.md).
+cdef frozenset _KNOWN_GROEBNER_KWARGS = frozenset((
+    'order', 'algorithm', 'reduced', 'interreduce_input', 'sort_output',
+    'modulus', 'max_s_pairs', 'max_reduction_steps', 'max_milliseconds',
+    'max_degree', 'max_coefficient_ops', 'track_genericity',
+    'cancellation_check_interval', 'normalize', 'cancellation_token',
+    'limits',
+))
+
+# Canonical ComputationLimits field names accepted by the limits= kwarg.
+# Mirrors ComputationLimits (symengine/computation_limits.h) minus the three
+# reserved-but-inert fields (max_spairs_generated, max_basis_total_terms,
+# max_polynomial_terms), which are rejected with a dedicated message.
+cdef frozenset _KNOWN_LIMITS_KEYS = frozenset((
+    'max_spairs_processed', 'max_basis_size', 'max_leading_degree',
+    'max_reduction_steps', 'max_staircase_size', 'max_frontier_size',
+    'max_linear_algebra_pivots', 'max_coefficient_ops', 'max_duration_ms',
+    'poll_interval',
+))
+
+cdef frozenset _RESERVED_LIMITS_KEYS = frozenset((
+    'max_spairs_generated', 'max_basis_total_terms', 'max_polynomial_terms',
+))
+
+
+cdef class CancellationToken:
+    """A cancellation flag for a running Groebner computation.
+
+    The GIL is released during ``groebner_basis`` and friends, so a token
+    created on one thread can be cancelled from another while the
+    computation is in flight: pass it as ``cancellation_token=tok`` and call
+    ``tok.cancel()`` from a different thread. ``reset()`` clears a cancelled
+    token so it can be reused for a subsequent call. Wraps a heap-allocated
+    C++ ``GroebnerCancellationToken`` (an ``AtomicCancellationToken``).
+    """
+    cdef symengine.GroebnerCancellationToken* thisptr
+
+    def __cinit__(self):
+        self.thisptr = new symengine.GroebnerCancellationToken()
+
+    def __dealloc__(self):
+        del self.thisptr
+
+    def cancel(self):
+        """Request cancellation. Safe to call from any thread."""
+        self.thisptr.cancel()
+
+    def reset(self):
+        """Clear a previous cancellation so the token can be reused."""
+        self.thisptr.reset()
+
+    def is_cancelled(self):
+        """Whether :meth:`cancel` has been called since the last :meth:`reset`."""
+        return bool(self.thisptr.is_cancelled())
+
+
+cdef class _ControlHolder:
+    """Owns the ComputationLimits/ComputationControl storage a GroebnerOptions
+    built with limits= or cancellation_token= points into.
+
+    GroebnerOptions.control is a raw pointer and GroebnerOptions is returned
+    by value from _build_groebner_options_with_holder, so the pointee cannot
+    live on the C++ stack of that function -- it would dangle the moment the
+    function returns. Instead it lives here, in a cdef class instance (heap
+    allocated, refcounted by Python) that the caller keeps as a live local
+    for the duration of the nogil call. This is the only object the
+    resulting GroebnerOptions.control may point into.
+    """
+    cdef symengine.ComputationLimits limits
+    cdef symengine.ComputationControl control
+    cdef CancellationToken token  # keeps a caller-supplied token's RCP alive
+
+    def __cinit__(self):
+        self.control.limits = NULL
+        self.control.cancellation = NULL
+        self.token = None
+
+
+cdef symengine.GroebnerOptions _build_groebner_options_with_holder(
+        dict kwargs, _ControlHolder holder) except *:
     cdef symengine.GroebnerOptions opts
+    cdef set unknown = set(kwargs) - _KNOWN_GROEBNER_KWARGS
+    if unknown:
+        raise TypeError(
+            "unexpected keyword argument(s): " +
+            ", ".join(repr(k) for k in sorted(unknown)))
     opts.order = _parse_monomial_order(kwargs.get('order'))
     opts.algorithm = _parse_algorithm(kwargs.get('algorithm'))
     opts.reduced = kwargs.get('reduced', True)
@@ -5805,12 +5903,73 @@ cdef symengine.GroebnerOptions _build_groebner_options(dict kwargs) except *:
     opts.max_degree = kwargs.get('max_degree', 0)
     opts.max_coefficient_ops = kwargs.get('max_coefficient_ops', 0)
     opts.track_genericity_assumptions = kwargs.get('track_genericity', True)
+    opts.normalization = _parse_normalization(kwargs.get('normalize'))
     # Poll cadence for the poll-gated checks (currently only
     # max_coefficient_ops; see ComputationCheckpoint::should_poll). Default
     # matches the previously-hardcoded value, so existing behavior is
     # unchanged unless a caller opts in to a finer interval.
     opts.cancellation_check_interval = kwargs.get('cancellation_check_interval', 1024)
+
+    cdef object token = kwargs.get('cancellation_token')
+    cdef object limits = kwargs.get('limits')
+    if token is not None and not isinstance(token, CancellationToken):
+        raise TypeError(
+            "cancellation_token must be a CancellationToken instance")
+    if limits is not None or token is not None:
+        # Routing note: an explicit GroebnerOptions.control fully supersedes
+        # the legacy numeric kwargs (max_milliseconds, max_reduction_steps,
+        # ...) on the C++ side. Therefore only limits= installs a control;
+        # a token supplied WITHOUT limits= goes through the legacy
+        # cancellation_token field instead, which LegacyControlBridge folds
+        # into the effective control while keeping the legacy numeric
+        # kwargs alive -- so cancellation composes with e.g.
+        # max_milliseconds= rather than silently disabling it.
+        if token is not None:
+            holder.token = token
+        if limits is not None:
+            if token is not None:
+                holder.control.cancellation = <const symengine.CancellationToken*>(
+                    (<CancellationToken>token).thisptr)
+            if not isinstance(limits, dict):
+                raise TypeError("limits must be a dict")
+            unknown_limits = set(limits) & _RESERVED_LIMITS_KEYS
+            if unknown_limits:
+                raise ValueError(
+                    "limits key(s) are reserved and currently inert: " +
+                    ", ".join(repr(k) for k in sorted(unknown_limits)))
+            unknown_limits = set(limits) - _KNOWN_LIMITS_KEYS
+            if unknown_limits:
+                raise ValueError(
+                    "unknown limits key(s): " +
+                    ", ".join(repr(k) for k in sorted(unknown_limits)))
+            holder.limits.max_spairs_processed = limits.get('max_spairs_processed', 0)
+            holder.limits.max_basis_size = limits.get('max_basis_size', 0)
+            holder.limits.max_leading_degree = limits.get('max_leading_degree', 0)
+            holder.limits.max_reduction_steps = limits.get('max_reduction_steps', 0)
+            holder.limits.max_staircase_size = limits.get('max_staircase_size', 0)
+            holder.limits.max_frontier_size = limits.get('max_frontier_size', 0)
+            holder.limits.max_linear_algebra_pivots = limits.get(
+                'max_linear_algebra_pivots', 0)
+            holder.limits.max_coefficient_ops = limits.get('max_coefficient_ops', 0)
+            holder.limits.max_duration_ms = limits.get('max_duration_ms', 0)
+            holder.limits.poll_interval = limits.get('poll_interval', 1024)
+            holder.control.limits = &holder.limits
+            opts.control = &holder.control
+        else:
+            # Token without limits: legacy field, composes with legacy kwargs.
+            opts.cancellation_token = (<CancellationToken>token).thisptr
     return opts
+
+
+cdef symengine.GroebnerOptions _build_groebner_options(dict kwargs) except *:
+    # For internal call sites that only ever pass a known-safe subset of
+    # keys (order/modulus) -- never limits= or cancellation_token=, so the
+    # holder's lifetime past this call does not matter: opts.control stays
+    # NULL either way. Public entry points must use
+    # _build_groebner_options_with_holder directly and keep the holder alive
+    # for the duration of the nogil call.
+    cdef _ControlHolder holder = _ControlHolder()
+    return _build_groebner_options_with_holder(kwargs, holder)
 
 
 cdef symengine.vec_sym _pylist_to_vec_sym(list variables) except *:
@@ -6055,11 +6214,13 @@ cdef class GroebnerBasis:
             result = symengine.is_zero_dimensional(c_G, c_vars, opts)
         return bool(result)
 
-    def fglm(self, order):
+    def fglm(self, order, **kwargs):
         # Reconstruct the C++ GroebnerResult from the stored (already reduced)
         # basis and feed it straight to fglm_convert -- no recomputation.
-        cdef symengine.GroebnerOptions opts = _build_groebner_options({
-            'order': order, 'modulus': self._modulus})
+        cdef dict opt_kwargs = dict(kwargs)
+        opt_kwargs['order'] = order
+        opt_kwargs['modulus'] = self._modulus
+        cdef symengine.GroebnerOptions opts = _build_groebner_options(opt_kwargs)
         cdef symengine.MonomialOrder target = _parse_monomial_order(order)
         cdef symengine.GroebnerResult source_result
         source_result.basis = iter_to_vec_basic(self._polys)
@@ -6081,9 +6242,16 @@ cdef class GroebnerBasis:
         for i in range(target_result.basis.size()):
             basis_polys.append(c2py(<rcp_const_basic>target_result.basis[i]))
         cdef list result_gens = _vec_sym_to_list(target_result.variables)
-        cdef dict target_stats = dict(self._stats)
-        target_stats['genericity_assumptions'] = vec_basic_to_tuple(
-            target_result.stats.genericity_assumptions)
+        # Build stats from the fglm_convert result's *own* stats (input_polys,
+        # output_polys, max_basis_size, fglm_reductions, ...), not the source
+        # basis's stats dict -- fglm_impl reports only its own work (see
+        # groebner.cpp's GroebnerResult fglm_impl comment), so carrying
+        # self._stats forward here used to leave fglm_reductions showing the
+        # source computation's (irrelevant) 0 instead of FGLM's own count.
+        # genericity_assumptions carry-forward (source assumptions unioned
+        # with any new ones FGLM's own pivots introduce) is handled
+        # C++-side and is already present in target_result.stats.
+        cdef dict target_stats = _groebner_stats_to_dict(target_result.stats)
         order_str = _monomial_order_to_str(target_result.order)
         algo_str = _algorithm_to_str(target_result.selected_algorithm)
         return GroebnerBasis(basis_polys, result_gens, order=order_str,
@@ -6182,6 +6350,21 @@ cdef class GroebnerBasis:
             poly.thisptr, c_G, c_vars, opts)
         return c2py(result)
 
+    def contains(self, f):
+        """Ideal-membership test: whether ``f`` lies in the ideal generated
+        by this basis.
+
+        SymPy parity note: mirrors ``sympy.polys.polytools.GroebnerBasis.contains``
+        (``f in G`` reduces to this), computed as ``self.reduce(f) == 0`` --
+        i.e. ``f`` is a member iff its normal form modulo this basis is
+        exactly zero. The empty basis generates the zero ideal, so it
+        contains only 0.
+        """
+        return bool(self.reduce(f) == 0)
+
+    def __contains__(self, f):
+        return self.contains(f)
+
     def classify_assumptions(self, positive=(), negative=(), nonzero=()):
         """Classify this basis's recorded genericity assumptions.
 
@@ -6217,7 +6400,8 @@ def groebner_basis(polys, *gens, **kwargs):
         raise ValueError("gens must be non-empty")
     cdef symengine.vec_basic c_polys = iter_to_vec_basic(poly_list)
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(gen_list)
-    cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
+    cdef _ControlHolder _holder = _ControlHolder()
+    cdef symengine.GroebnerOptions opts = _build_groebner_options_with_holder(kwargs, _holder)
     cdef symengine.GroebnerResult result
     with nogil:
         result = symengine.groebner_basis(c_polys, c_vars, opts)
@@ -6255,7 +6439,8 @@ def normal_form(poly, G, gens, **kwargs):
     cdef Basic poly_ = sympify(poly)
     cdef symengine.vec_basic c_G = iter_to_vec_basic(list(G))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
-    cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
+    cdef _ControlHolder _holder = _ControlHolder()
+    cdef symengine.GroebnerOptions opts = _build_groebner_options_with_holder(kwargs, _holder)
     cdef rcp_const_basic poly_ptr = poly_.thisptr
     cdef rcp_const_basic result
     with nogil:
@@ -6266,7 +6451,8 @@ def normal_form(poly, G, gens, **kwargs):
 def is_groebner(G, gens, **kwargs):
     cdef symengine.vec_basic c_G = iter_to_vec_basic(list(G))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
-    cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
+    cdef _ControlHolder _holder = _ControlHolder()
+    cdef symengine.GroebnerOptions opts = _build_groebner_options_with_holder(kwargs, _holder)
     cdef bint result
     with nogil:
         result = symengine.is_groebner(c_G, c_vars, opts)
@@ -6276,7 +6462,8 @@ def is_groebner(G, gens, **kwargs):
 def is_reduced_basis(G, gens, **kwargs):
     cdef symengine.vec_basic c_G = iter_to_vec_basic(list(G))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
-    cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
+    cdef _ControlHolder _holder = _ControlHolder()
+    cdef symengine.GroebnerOptions opts = _build_groebner_options_with_holder(kwargs, _holder)
     cdef bint result
     with nogil:
         result = symengine.is_reduced_basis(c_G, c_vars, opts)
@@ -6289,7 +6476,8 @@ def is_zero_dimensional(G, gens, **kwargs):
     solutions over the algebraic closure."""
     cdef symengine.vec_basic c_G = iter_to_vec_basic(list(G))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
-    cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
+    cdef _ControlHolder _holder = _ControlHolder()
+    cdef symengine.GroebnerOptions opts = _build_groebner_options_with_holder(kwargs, _holder)
     cdef bint result
     with nogil:
         result = symengine.is_zero_dimensional(c_G, c_vars, opts)
@@ -6299,7 +6487,8 @@ def is_zero_dimensional(G, gens, **kwargs):
 def solve_poly_system(equations, *gens, **kwargs):
     cdef symengine.vec_basic c_eqs = iter_to_vec_basic(list(equations))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
-    cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
+    cdef _ControlHolder _holder = _ControlHolder()
+    cdef symengine.GroebnerOptions opts = _build_groebner_options_with_holder(kwargs, _holder)
     if opts.modulus != 0:
         raise ValueError(
             "solve_poly_system does not support roots over finite fields")
@@ -6361,7 +6550,8 @@ def solve_poly_system_ex(equations, *gens, **kwargs):
     """
     cdef symengine.vec_basic c_eqs = iter_to_vec_basic(list(equations))
     cdef symengine.vec_sym c_vars = _pylist_to_vec_sym(list(gens))
-    cdef symengine.GroebnerOptions opts = _build_groebner_options(kwargs)
+    cdef _ControlHolder _holder = _ControlHolder()
+    cdef symengine.GroebnerOptions opts = _build_groebner_options_with_holder(kwargs, _holder)
     if opts.modulus != 0:
         raise ValueError(
             "solve_poly_system_ex does not support roots over finite fields")
