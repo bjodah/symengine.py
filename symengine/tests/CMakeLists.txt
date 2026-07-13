@@ -7,6 +7,8 @@ install(
     test_arit.py
     test_groebner_extended.py
     test_groebner_extended2.py
+    test_groebner_extended3.py
+    test_groebner_extended4.py
     test_cse.py
     test_dict_basic.py
     test_eval.py
