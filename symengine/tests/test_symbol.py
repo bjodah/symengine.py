@@ -1,7 +1,9 @@
 from symengine import Symbol, symbols, symarray, has_symbol, Dummy
 from symengine.test_utilities import raises
-import unittest
+import gc
 import platform
+import unittest
+import weakref
 
 
 def test_symbol():
@@ -166,6 +168,26 @@ def test_dummy():
     assert xdummy1 != xdummy2
     assert Dummy() != Dummy()
     assert Dummy('x') != Dummy('x')
+
+
+def test_symbol_subclass_is_collected():
+    class SymbolSubclass(Symbol):
+        pass
+
+    symbol = SymbolSubclass("symbol")
+    symbol.extra_attribute = 42
+
+    # Returning from C++ must preserve the exact Python wrapper and subclass.
+    round_trip = (symbol + 1) - 1
+    assert round_trip is symbol
+
+    reference = weakref.ref(symbol)
+    del round_trip
+    del symbol
+    gc.collect()
+
+    assert reference() is None
+
 
 # Cython cdef classes on PyPy has a __dict__ attribute always
 # __slots__ on PyPy are useless anyways. https://stackoverflow.com/a/23077685/4768820

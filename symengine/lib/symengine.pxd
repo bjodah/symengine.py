@@ -59,6 +59,9 @@ cdef extern from "<symengine/symengine_rcp.h>" namespace "SymEngine":
 
     void print_stack_on_segfault() nogil
 
+cdef extern from "pywrapper.h" namespace "SymEngine":
+    void initialize_python_cooperative_intrusive() except +
+
 cdef extern from "<symengine/basic.h>" namespace "SymEngine":
     ctypedef Basic const_Basic "const SymEngine::Basic"
     # RCP[const_Basic] instead of RCP[const Basic] is because of https://github.com/cython/cython/issues/5478
@@ -67,6 +70,14 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
     #    Basic& operator*() nogil
     #    void reset() nogil except +
     #    pass
+
+    cdef cppclass PyBasicHolder:
+        PyBasicHolder()
+        void set_owner(PyObject*) noexcept
+        PyBasicHolder& operator=(const rcp_const_basic&) except +
+        rcp_const_basic as_rcp() except +
+        const_Basic* get() noexcept
+        void reset() noexcept
     # Cython has broken support for the following:
     # ctypedef map[rcp_const_basic, rcp_const_basic] map_basic_basic
     # So instead we replicate the map features we need here
@@ -135,6 +146,7 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
         unsigned int hash() nogil except +
         vec_basic get_args() nogil
         int __cmp__(const Basic &o) nogil
+        void* self_external() noexcept
 
     ctypedef RCP[const Number] rcp_const_number "SymEngine::RCP<const SymEngine::Number>"
     ctypedef unordered_map[int, rcp_const_basic] umap_int_basic "SymEngine::umap_int_basic"

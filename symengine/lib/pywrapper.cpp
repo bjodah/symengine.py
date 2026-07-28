@@ -1,4 +1,6 @@
 #include "pywrapper.h"
+
+#include <atomic>
 #include <symengine/serialize-cereal.h>
 
 #if PY_MAJOR_VERSION >= 3
@@ -7,6 +9,46 @@
 #endif
 
 namespace SymEngine {
+
+namespace {
+
+std::atomic<bool> python_runtime_dead{false};
+
+void python_runtime_shutdown()
+{
+    python_runtime_dead.store(true, std::memory_order_relaxed);
+}
+
+void python_cooperative_incref(void *object) noexcept
+{
+    if (python_runtime_dead.load(std::memory_order_relaxed))
+        return;
+    PyGILState_STATE state = PyGILState_Ensure();
+    Py_INCREF(reinterpret_cast<PyObject *>(object));
+    PyGILState_Release(state);
+}
+
+void python_cooperative_decref(void *object) noexcept
+{
+    if (python_runtime_dead.load(std::memory_order_relaxed))
+        return;
+    PyGILState_STATE state = PyGILState_Ensure();
+    Py_DECREF(reinterpret_cast<PyObject *>(object));
+    PyGILState_Release(state);
+}
+
+} // namespace
+
+void initialize_python_cooperative_intrusive()
+{
+    static bool initialized = []() {
+        cooperative_intrusive_init(python_cooperative_incref,
+                                   python_cooperative_decref);
+        Py_AtExit(python_runtime_shutdown);
+        return true;
+    }();
+    (void)initialized;
+}
 
 // PyModule
 PyModule::PyModule(PyObject* (*to_py)(const RCP<const Basic>), RCP<const Basic> (*from_py)(PyObject*),
@@ -304,7 +346,10 @@ RCP<const Basic> load_basic(RCPBasicAwareInputArchive<cereal::PortableBinaryInpu
         ar(pickle_str);
         ar(store_pickle);
         PyObject *obj = pickle_loads(pickle_str);
-        RCP<const Basic> result = make_rcp<PySymbol>(name, obj, store_pickle);
+        // The deserialization-local Python object cannot serve as a durable
+        // weak-reference target.  Preserve its pickle bytes in the temporary
+        // native marker; c2py() will reconstruct and externalize the wrapper.
+        RCP<const Basic> result = make_rcp<PySymbol>(name, obj, true);
         Py_XDECREF(obj);
         return result;
     } else {

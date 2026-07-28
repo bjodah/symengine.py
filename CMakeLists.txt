@@ -17,6 +17,11 @@ find_package(SymEngine 0.14.0 REQUIRED CONFIG
              PATH_SUFFIXES lib/cmake/symengine cmake/symengine CMake/)
 message("SymEngine_DIR : " ${SymEngine_DIR})
 message("SymEngine Version : " ${SymEngine_VERSION})
+if (NOT SYMENGINE_RCP_BACKEND STREQUAL "cooperative_intrusive")
+  message(FATAL_ERROR
+    "This symengine.py branch requires SymEngine configured with "
+    "-DSYMENGINE_RCP_BACKEND=cooperative_intrusive")
+endif()
 set(CMAKE_BUILD_TYPE ${SYMENGINE_BUILD_TYPE})
 set(CMAKE_CXX_FLAGS_RELEASE ${SYMENGINE_CXX_FLAGS_RELEASE})
 set(CMAKE_CXX_FLAGS_DEBUG ${SYMENGINE_CXX_FLAGS_DEBUG})

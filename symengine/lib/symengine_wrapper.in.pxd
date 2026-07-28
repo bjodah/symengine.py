@@ -8,7 +8,7 @@ from libcpp.string cimport string
 from libcpp cimport bool as cppbool
 
 cdef class Basic(object):
-    cdef rcp_const_basic thisptr
+    cdef symengine.PyBasicHolder thisptr
 
 cdef class MatrixBase(object):
     cdef symengine.MatrixBase* thisptr

@@ -11,6 +11,141 @@ namespace SymEngine {
 std::string pickle_dumps(const PyObject *);
 PyObject* pickle_loads(const std::string &);
 
+#if !defined(WITH_SYMENGINE_COOPERATIVE_INTRUSIVE_RCP)
+#error "symengine.py cooperative ownership requires " \
+       "SYMENGINE_RCP_BACKEND=cooperative_intrusive"
+#endif
+
+void initialize_python_cooperative_intrusive();
+
+/*
+ * Non-owning storage for a Basic pointer inside a Python wrapper.
+ *
+ * Assigning an RCP hands all of its current C++ references to the Python
+ * runtime.  Thereafter temporary RCPs retain/release the Python wrapper via
+ * the cooperative hooks, while this holder deliberately contributes no
+ * reference of its own.  This absence of a self-reference is what makes
+ * Python's cyclic GC able to collect subclasses with instance attributes.
+ */
+class PyBasicHolder {
+private:
+    const Basic *ptr_ = nullptr;
+    PyObject *owner_ = nullptr;
+    PyObject *delegate_ = nullptr;
+
+public:
+    PyBasicHolder() = default;
+    PyBasicHolder(const PyBasicHolder &) = delete;
+    PyBasicHolder &operator=(const PyBasicHolder &) = delete;
+
+    /*
+     * Cython lowers assignment from an RCP to a converting temporary followed
+     * by move-assignment.  The temporary only borrows the native pointer; the
+     * destination already knows its Python owner and performs the handoff.
+     */
+    PyBasicHolder(const RCP<const Basic> &value) noexcept : ptr_(value.get()) {}
+
+    PyBasicHolder(PyBasicHolder &&other) noexcept
+        : ptr_(other.ptr_), owner_(other.owner_), delegate_(other.delegate_)
+    {
+        other.ptr_ = nullptr;
+        other.owner_ = nullptr;
+        other.delegate_ = nullptr;
+    }
+
+    PyBasicHolder &operator=(PyBasicHolder &&other)
+    {
+        const Basic *next = other.ptr_;
+        PyObject *next_delegate = other.delegate_;
+        other.ptr_ = nullptr;
+        other.delegate_ = nullptr;
+        if (ptr_ != nullptr && ptr_ != next)
+            reset();
+        ptr_ = next;
+        delegate_ = next_delegate;
+        externalize();
+        return *this;
+    }
+
+    void set_owner(PyObject *owner) noexcept
+    {
+        owner_ = owner;
+    }
+
+    PyBasicHolder &operator=(const RCP<const Basic> &value)
+    {
+        const Basic *next = value.get();
+        if (ptr_ != nullptr && ptr_ != next)
+            reset();
+
+        ptr_ = next;
+        externalize();
+        return *this;
+    }
+
+    operator RCP<const Basic>() const
+    {
+        return ptr_ == nullptr ? RCP<const Basic>(null) : rcp(ptr_);
+    }
+
+    RCP<const Basic> as_rcp() const
+    {
+        return static_cast<RCP<const Basic>>(*this);
+    }
+
+    const Basic &operator*() const
+    {
+        if (ptr_ == nullptr)
+            throw std::runtime_error("uninitialized SymEngine Basic wrapper");
+        return *ptr_;
+    }
+
+    const Basic *get() const noexcept
+    {
+        return ptr_;
+    }
+
+    void reset() noexcept
+    {
+        const Basic *old = ptr_;
+        PyObject *delegate = delegate_;
+        ptr_ = nullptr;
+        delegate_ = nullptr;
+        if (old != nullptr && old->self_external() == owner_) {
+            delete old;
+        } else {
+            Py_XDECREF(delegate);
+        }
+    }
+
+private:
+    void externalize()
+    {
+        if (ptr_ == nullptr)
+            return;
+        if (owner_ == nullptr)
+            throw std::runtime_error("Python owner was not initialized");
+
+        void *external = ptr_->self_external();
+        if (external == nullptr) {
+            ptr_->set_self_external(owner_);
+        } else if (external != owner_) {
+            /*
+             * Direct construction of singleton facade classes (for example,
+             * ``type(nan)()``) historically creates a second Python wrapper.
+             * Keep that wrapper as a borrower anchored to the canonical owner;
+             * c2py() still returns the canonical wrapper for C++ results.
+             */
+            PyObject *delegate = reinterpret_cast<PyObject *>(external);
+            if (delegate_ != delegate) {
+                Py_XINCREF(delegate);
+                Py_XDECREF(delegate_);
+                delegate_ = delegate;
+            }
+        }
+    }
+};
+
 /*
  * PySymbol is a subclass of Symbol that keeps a reference to a Python object.
  * When subclassing a Symbol from Python, the information stored in subclassed
@@ -22,37 +157,35 @@ PyObject* pickle_loads(const std::string &);
  * subclassed python object can be returned instead of wrapping in a Python
  * class Symbol.
  *
- * TODO: Python object and C++ object both keep a reference to each other as one
- * must be alive when the other is alive. This creates a cyclic reference and
- * should be fixed.
-*/
+ * The cooperative intrusive counter's external pointer identifies the Python
+ * wrapper and keeps it alive whenever a C++ RCP exists.  PySymbol therefore
+ * needs no separate Python reference, avoiding the former strong-reference
+ * cycle.
+ */
 
 class PySymbol : public Symbol {
 private:
-    PyObject* obj;
     std::string bytes;
 public:
     const bool store_pickle;
     PySymbol(const std::string& name, PyObject* obj, bool store_pickle) :
-            Symbol(name), obj(obj), store_pickle(store_pickle) {
+            Symbol(name), store_pickle(store_pickle) {
         if (store_pickle) {
             bytes = pickle_dumps(obj);
-        } else {
-            Py_INCREF(obj);
         }
     }
     PyObject* get_py_object() const {
         if (store_pickle) {
             return pickle_loads(bytes);
         } else {
+            PyObject *obj
+                = reinterpret_cast<PyObject *>(self_external());
+            if (obj == nullptr) {
+                throw std::runtime_error(
+                    "PySymbol has not been attached to its Python wrapper");
+            }
             Py_INCREF(obj);
             return obj;
-        }
-    }
-    virtual ~PySymbol() {
-        if (not store_pickle) {
-            // TODO: This is never called because of the cyclic reference.
-            Py_DECREF(obj);
         }
     }
 };

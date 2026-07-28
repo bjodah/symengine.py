@@ -41,6 +41,10 @@ For **SymEngine**, only a specific commit/tag (see `symengine_version.txt`) is
 supported.   The latest git master branch may not work as there may be breaking
 changes in **SymEngine**.
 
+NOTE: This branch additionally requires SymEngine to be configured with
+`-DSYMENGINE_RCP_BACKEND=cooperative_intrusive`. The CMake configuration fails
+early when another RCP backend is detected.
+
 Python wrappers can be installed by,
 
 ```bash
@@ -116,4 +120,3 @@ Licenses for the dependencies of pip wheels are as follows:
   dependencies.
 - Sources for these binary dependencies can be found on
   [symengine-wheels](https://github.com/symengine/symengine-wheels/releases).
-
