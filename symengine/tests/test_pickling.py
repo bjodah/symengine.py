@@ -67,7 +67,6 @@ def _check_pickling_roundtrip(arg):
     arg3 = pickle.loads(s3)
     assert arg == arg3
 
-
 def test_pickling_roundtrip():
     x, y, z = symbols('x y z')
     _check_pickling_roundtrip(x+y)

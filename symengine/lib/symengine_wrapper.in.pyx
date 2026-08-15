@@ -4021,6 +4021,10 @@ cdef class DenseMatrixBase(MatrixBase):
     def solve(self, b, method='LU'):
         cdef DenseMatrixBase b_ = sympify(b)
         cdef DenseMatrixBase x = self.__class__(b_.nrows(), b_.ncols())
+        if b_.rows != self.rows:
+            raise ValueError("Unexpected number of rows in b")
+        if x.rows != self.cols:
+            raise ValueError("Unexpected number of rows in x")
 
         if method.upper() == 'LU':
             ## solve() method of DenseMatrixBase uses LU factorization
@@ -4036,9 +4040,11 @@ cdef class DenseMatrixBase(MatrixBase):
                 deref(symengine.static_cast_DenseMatrix(b_.thisptr)),
                 deref(symengine.static_cast_DenseMatrix(x.thisptr)))
         elif method.upper() == 'FFGJ':
-            symengine.FFGJ_solve(deref(symengine.static_cast_DenseMatrix(self.thisptr)),
+            failure = symengine.FFGJ_solve(deref(symengine.static_cast_DenseMatrix(self.thisptr)),
                 deref(symengine.static_cast_DenseMatrix(b_.thisptr)),
                 deref(symengine.static_cast_DenseMatrix(x.thisptr)))
+            if (failure != 0):
+                raise Exception("Underdetermined system. Failed to find non-zero pivot in column: %d" % failure)
         else:
             raise Exception("Unsupported method.")
 
@@ -4972,7 +4978,7 @@ def has_basic(obj, looking_for=None):
 def has_symbol(obj, symbol=None):
     cdef Basic b = _sympify(obj)
     cdef Basic s = _sympify(symbol)
-    require(s, (Symbol, FunctionSymbol))
+    require(s, (Symbol, FunctionSymbol, Infinity, NegativeInfinity, NaN))
     if (not symbol):
         return not b.free_symbols.empty()
     else:

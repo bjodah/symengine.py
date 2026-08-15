@@ -35,6 +35,7 @@ if ("${CYTHON_VERSION}" VERSION_GREATER_EQUAL "3.1")
   set(CYTHON_EXTRA_ARGS "-Xfreethreading_compatible=True")
 endif()
 
+
 cython_transpile(
   ${CMAKE_CURRENT_BINARY_DIR}/symengine_wrapper.pyx
   LANGUAGE CXX
@@ -106,7 +107,7 @@ install(
   FILES
     __init__.py
     symengine.pxd
-    ${CMAKE_CURRENT_BINARY_DIR}/symengine_wrapper.pxd
+    symengine_wrapper.pxd
     pywrapper.h
   DESTINATION symengine/lib
 )

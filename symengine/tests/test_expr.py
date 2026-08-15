@@ -37,6 +37,7 @@ def test_Basic__has():
     assert e.has(y)
     assert e.has(xpowy)
     raises(Exception, lambda: e.has(x+1))  # subtree matching of associative operators not yet supported
+
     assert (x + oo).has(oo)
     assert (x - oo).has(-oo)
     assert not (x + oo).has(-oo)
