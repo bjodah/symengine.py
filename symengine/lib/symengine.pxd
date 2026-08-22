@@ -363,8 +363,6 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
     rcp_const_basic make_rcp_Integer "SymEngine::make_rcp<const SymEngine::Integer>"(integer_class i) nogil
     rcp_const_basic make_rcp_Subs "SymEngine::make_rcp<const SymEngine::Subs>"(rcp_const_basic arg, const map_basic_basic &x) nogil
     rcp_const_basic make_rcp_Derivative "SymEngine::make_rcp<const SymEngine::Derivative>"(rcp_const_basic arg, const multiset_basic &x) nogil
-    rcp_const_basic make_rcp_FunctionWrapper "SymEngine::make_rcp<const SymEngine::FunctionWrapper>"(void* obj, string name, string hash_, const vec_basic &arg, \
-            void (*dec_ref)(void *), int (*comp)(void *, void *)) nogil
     rcp_const_basic make_rcp_RealDouble "SymEngine::make_rcp<const SymEngine::RealDouble>"(double x) nogil
     rcp_const_basic make_rcp_ComplexDouble "SymEngine::make_rcp<const SymEngine::ComplexDouble>"(double complex x) nogil
     RCP[const PyModule] make_rcp_PyModule "SymEngine::make_rcp<const SymEngine::PyModule>"(PyObject* (*) (rcp_const_basic x) except +, \
@@ -518,9 +516,7 @@ cdef extern from "<symengine/functions.h>" namespace "SymEngine":
         string get_name() nogil
 
     cdef cppclass FunctionWrapper(FunctionSymbol):
-        FunctionWrapper(void* obj, string name, string hash_, const vec_basic &arg, \
-            void (*dec_ref)(void *), int (*comp)(void *, void *))
-        void* get_object()
+        pass
 
     cdef cppclass Derivative(Basic):
         Derivative(const rcp_const_basic &arg, const vec_basic &x) nogil
