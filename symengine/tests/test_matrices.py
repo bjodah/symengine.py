@@ -207,6 +207,11 @@ def test_inv():
     assert A.inv('FFLU') == B
     assert A.inv('GJ') == B
 
+    nonsquare = DenseMatrix(2, 3, [1, 0, 0, 0, 1, 0])
+    for method in ('LU', 'FFLU', 'GJ'):
+        raises(NonSquareMatrixError, lambda method=method:
+               nonsquare.inv(method))
+
 
 def test_add_matrix():
     A = DenseMatrix(2, 2, [1, 2, 3, 4])
@@ -424,6 +429,10 @@ def test_LU():
     assert L == DenseMatrix(3, 3, [1, 0, 0, 2, 1, 0, 8, 21, 1])
     assert U == DenseMatrix(3, 3, [1, 3, 5, 0, -1, -4, 0, 0, 45])
 
+    nonsquare = DenseMatrix(2, 3, [1, 0, 0, 0, 1, 0])
+    raises(NonSquareMatrixError, lambda: nonsquare.LU())
+    raises(NonSquareMatrixError, lambda: nonsquare.LUdecomposition())
+
 
 def test_LDL():
     A = DenseMatrix(3, 3, [4, 12, -16, 12, 37, -43, -16, -43, 98])
@@ -432,6 +441,9 @@ def test_LDL():
 
     assert L == DenseMatrix(3, 3, [1, 0, 0, 3, 1, 0, -4, 5, 1])
     assert D == DenseMatrix(3, 3, [4, 0, 0, 0, 1, 0, 0, 0, 9])
+
+    nonsquare = DenseMatrix(2, 3, [1, 0, 0, 0, 1, 0])
+    raises(NonSquareMatrixError, lambda: nonsquare.LDL())
 
 
 def test_solve():
@@ -462,6 +474,9 @@ def test_FFLU():
     assert U == DenseMatrix(4, 4, [1, 2, 3, 4, 0, -2, -3, -4,
                                    0, 0, 3, 4, 0, 0, 0, -10])
 
+    nonsquare = DenseMatrix(2, 3, [1, 0, 0, 0, 1, 0])
+    raises(NonSquareMatrixError, lambda: nonsquare.FFLU())
+
 
 def test_FFLDU():
     A = DenseMatrix(3, 3, [1, 2, 3, 5, -3, 2, 6, 2, 1])
@@ -470,6 +485,9 @@ def test_FFLDU():
     assert L == DenseMatrix(3, 3, [1, 0, 0, 5, -13, 0, 6, -10, 1])
     assert D == DenseMatrix(3, 3, [1, 0, 0, 0, -13, 0, 0, 0, -13])
     assert U == DenseMatrix(3, 3, [1, 2, 3, 0, -13, -13, 0, 0, 91])
+
+    nonsquare = DenseMatrix(2, 3, [1, 0, 0, 0, 1, 0])
+    raises(NonSquareMatrixError, lambda: nonsquare.FFLDU())
 
 
 def test_QR():
@@ -483,12 +501,39 @@ def test_QR():
                                    Rational(-33, 35)])
     assert R == DenseMatrix(3, 3, [14, 21, -14, 0, 175, -70, 0, 0, 35])
 
+    tall = DenseMatrix(3, 2, [1, 0, 0, 1, 0, 0])
+    Q, R = tall.QR()
+    assert Q == tall
+    assert Q.shape == (3, 2)
+    assert R == eye(2)
+    assert R.shape == (2, 2)
+
+    wide = DenseMatrix(2, 3, [1, 0, 0, 0, 1, 0])
+    raises(ShapeError, lambda: wide.QR())
+
 
 def test_cholesky():
     A = DenseMatrix(3, 3, [4, 12, -16, 12, 37, -43, -16, -43, 98])
     L = A.cholesky()
 
     assert L == DenseMatrix(3, 3, [2, 0, 0, 6, 1, 0, -8, 5, 3])
+
+    nonsquare = DenseMatrix(2, 3, [1, 0, 0, 0, 1, 0])
+    raises(NonSquareMatrixError, lambda: nonsquare.cholesky())
+
+
+def test_empty_factorizations_and_inverse():
+    A = DenseMatrix(0, 0, [])
+    assert A.inv().shape == (0, 0)
+    assert all(matrix.shape == (0, 0) for matrix in A.LU())
+    L, U, swaps = A.LUdecomposition()
+    assert L.shape == U.shape == (0, 0)
+    assert swaps == []
+    assert all(matrix.shape == (0, 0) for matrix in A.LDL())
+    assert all(matrix.shape == (0, 0) for matrix in A.FFLU())
+    assert all(matrix.shape == (0, 0) for matrix in A.FFLDU())
+    assert all(matrix.shape == (0, 0) for matrix in A.QR())
+    assert A.cholesky().shape == (0, 0)
 
 
 def test_str_repr():

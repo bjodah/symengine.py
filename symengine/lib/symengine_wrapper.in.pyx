@@ -3834,6 +3834,8 @@ cdef class DenseMatrixBase(MatrixBase):
         return c2py(deref(self.thisptr).det())
 
     def inv(self, method='LU'):
+        if not self.is_square:
+            raise NonSquareMatrixError()
         cdef DenseMatrixBase result = self.__class__(self.nrows(), self.ncols())
 
         if method.upper() == 'LU':
@@ -4008,14 +4010,16 @@ cdef class DenseMatrixBase(MatrixBase):
         return result
 
     def LU(self):
+        if not self.is_square:
+            raise NonSquareMatrixError()
         cdef DenseMatrixBase L = self.__class__(self.nrows(), self.ncols())
         cdef DenseMatrixBase U = self.__class__(self.nrows(), self.ncols())
         deref(self.thisptr).LU(deref(L.thisptr), deref(U.thisptr))
         return L, U
 
     def LUdecomposition(self):
-        if self.rows != self.cols:
-            raise NotImplementedError("LU decomposition not implemented for non-square matrices yet.")
+        if not self.is_square:
+            raise NonSquareMatrixError()
         cdef DenseMatrixBase L = self.__class__(self.nrows(), self.ncols())
         cdef DenseMatrixBase U = self.__class__(self.nrows(), self.ncols())
         cdef vector[pair[int, int]] perm
@@ -4027,6 +4031,8 @@ cdef class DenseMatrixBase(MatrixBase):
         return L, U, perm
 
     def LDL(self):
+        if not self.is_square:
+            raise NonSquareMatrixError()
         cdef DenseMatrixBase L = self.__class__(self.nrows(), self.ncols())
         cdef DenseMatrixBase D = self.__class__(self.nrows(), self.ncols())
         deref(self.thisptr).LDL(deref(L.thisptr), deref(D.thisptr))
@@ -4073,6 +4079,8 @@ cdef class DenseMatrixBase(MatrixBase):
         return x
 
     def FFLU(self):
+        if not self.is_square:
+            raise NonSquareMatrixError()
         cdef DenseMatrixBase L = self.__class__(self.nrows(), self.ncols())
         cdef DenseMatrixBase U = self.__class__(self.nrows(), self.ncols(), [0]*self.nrows()*self.ncols())
         deref(self.thisptr).FFLU(deref(L.thisptr))
@@ -4086,6 +4094,8 @@ cdef class DenseMatrixBase(MatrixBase):
         return L, U
 
     def FFLDU(self):
+        if not self.is_square:
+            raise NonSquareMatrixError()
         cdef DenseMatrixBase L = self.__class__(self.nrows(), self.ncols())
         cdef DenseMatrixBase D = self.__class__(self.nrows(), self.ncols())
         cdef DenseMatrixBase U = self.__class__(self.nrows(), self.ncols())
@@ -4093,12 +4103,16 @@ cdef class DenseMatrixBase(MatrixBase):
         return L, D, U
 
     def QR(self):
+        if self.nrows() < self.ncols():
+            raise ShapeError("QR decomposition requires rows >= columns.")
         cdef DenseMatrixBase Q = self.__class__(self.nrows(), self.ncols())
-        cdef DenseMatrixBase R = self.__class__(self.nrows(), self.ncols())
+        cdef DenseMatrixBase R = self.__class__(self.ncols(), self.ncols())
         deref(self.thisptr).QR(deref(Q.thisptr), deref(R.thisptr))
         return Q, R
 
     def cholesky(self):
+        if not self.is_square:
+            raise NonSquareMatrixError()
         cdef DenseMatrixBase L = self.__class__(self.nrows(), self.ncols())
         deref(self.thisptr).cholesky(deref(L.thisptr))
         return L

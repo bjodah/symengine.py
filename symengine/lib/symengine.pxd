@@ -664,7 +664,7 @@ cdef extern from "<symengine/matrix.h>" namespace "SymEngine":
         string __str__() except + nogil
         bool eq(const MatrixBase &) nogil
         rcp_const_basic det() nogil
-        void inv(MatrixBase &)
+        void inv(MatrixBase &) except + nogil
         bool is_square() nogil
         void add_matrix(const MatrixBase &other, MatrixBase &result) nogil
         void mul_matrix(const MatrixBase &other, MatrixBase &result) nogil
@@ -678,13 +678,13 @@ cdef extern from "<symengine/matrix.h>" namespace "SymEngine":
                        unsigned row_start, unsigned col_start,
                        unsigned row_end, unsigned col_end,
                        unsigned row_step, unsigned col_step) nogil
-        void LU(MatrixBase &L, MatrixBase &U) nogil
-        void LDL(MatrixBase &L, MatrixBase &D) nogil
-        void LU_solve(const MatrixBase &b, MatrixBase &x) nogil
-        void FFLU(MatrixBase &LU) nogil
-        void FFLDU(MatrixBase &L, MatrixBase &D, MatrixBase &U) nogil
-        void QR(MatrixBase &Q, MatrixBase &R) nogil
-        void cholesky(MatrixBase &L) nogil
+        void LU(MatrixBase &L, MatrixBase &U) except + nogil
+        void LDL(MatrixBase &L, MatrixBase &D) except + nogil
+        void LU_solve(const MatrixBase &b, MatrixBase &x) except + nogil
+        void FFLU(MatrixBase &LU) except + nogil
+        void FFLDU(MatrixBase &L, MatrixBase &D, MatrixBase &U) except + nogil
+        void QR(MatrixBase &Q, MatrixBase &R) except + nogil
+        void cholesky(MatrixBase &L) except + nogil
 
     cdef cppclass DenseMatrix(MatrixBase):
         DenseMatrix()
