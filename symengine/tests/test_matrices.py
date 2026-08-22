@@ -447,12 +447,9 @@ def test_solve():
     assert x == y
 
     B = DenseMatrix(2, 2, [0]*4)
-    try:
-        B.solve(b, 'FFGJ')
-    except Exception:
-        pass
-    else:
-        raise Exception("this operation should have raised an exception")
+    # The official wrapper rejects this caller-input mismatch before entering
+    # the C++ solver, whose old Debug assertion terminated the process.
+    raises(ValueError, lambda: B.solve(b, 'FFGJ'))
 
 
 
