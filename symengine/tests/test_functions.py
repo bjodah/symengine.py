@@ -3,7 +3,7 @@ from symengine import (
     Rational, EulerGamma, Function, Subs, Derivative, LambertW, zeta, dirichlet_eta,
     zoo, pi, KroneckerDelta, LeviCivita, erf, erfc, oo, lowergamma, uppergamma, exp,
     loggamma, beta, polygamma, digamma, trigamma, sign, floor, ceiling, conjugate,
-    nan, Float, UnevaluatedExpr
+    nan, Float, UnevaluatedExpr, FiniteSet
 )
 from symengine.test_utilities import raises
 
@@ -181,6 +181,76 @@ def test_FunctionWrapper():
     f = e.subs({x : 100});
     v = f.n(53, real=True);
     assert abs(float(v) - 100.00000000) < 1e-7
+
+
+@unittest.skipUnless(have_sympy, "SymPy not installed")
+def test_PyFunction_callable_order():
+    from symengine.lib.symengine_wrapper import PyFunction, sympy_module
+
+    class OrderedCallable:
+        comparisons = []
+
+        def __init__(self, rank):
+            self.rank = rank
+
+        def __str__(self):
+            # Hide the semantic distinction from FunctionWrapper's display
+            # name comparison so PyFunctionClass.compare must decide.
+            return "f"
+
+        def __hash__(self):
+            return hash(("f", self.rank))
+
+        def __eq__(self, other):
+            return (isinstance(other, OrderedCallable)
+                    and self.rank == other.rank)
+
+        def __lt__(self, other):
+            self.comparisons.append((self.rank, other.rank))
+            return self.rank < other.rank
+
+        def __call__(self, *args):
+            return AppliedCallable(self, args)
+
+    class AppliedCallable:
+        def __init__(self, function, args):
+            self.function = function
+            self.args = tuple(args)
+
+        def __hash__(self):
+            # Force unequal applications through Basic::__cmp__ in ordered
+            # containers instead of letting their hashes decide the order.
+            return 0xF00
+
+        def __eq__(self, other):
+            return (isinstance(other, AppliedCallable)
+                    and self.function == other.function
+                    and self.args == other.args)
+
+    x = Symbol("x")
+    y = Symbol("y")
+    low_class = OrderedCallable(0)
+    high_class = OrderedCallable(1)
+    low = PyFunction(low_class(x), [x], low_class, sympy_module)
+    high = PyFunction(high_class(y), [y], high_class, sympy_module)
+
+    OrderedCallable.comparisons.clear()
+    forward = FiniteSet(low, high)
+    assert OrderedCallable.comparisons
+    OrderedCallable.comparisons.clear()
+    reverse = FiniteSet(high, low)
+    assert OrderedCallable.comparisons
+    assert forward == reverse
+    assert str(forward) == str(reverse)
+    assert str(forward) == "{f(x), f(y)}"
+
+    # Separately constructed coherent applications compare and hash alike,
+    # while retaining the hash of the corresponding Python application.
+    low_copy_application = low_class(x)
+    low_copy = PyFunction(low_copy_application, [x], low_class, sympy_module)
+    assert low == low_copy
+    assert hash(low) == hash(low_copy) == hash(low_copy_application)
+    assert len({low, low_copy}) == 1
 
 
 def test_log():

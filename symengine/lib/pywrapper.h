@@ -300,8 +300,8 @@ private:
     PyObject *pyobject_;
     //! Name of the function
     std::string name_;
-    //! Hash of the python function
-    mutable hash_t hash_;
+    //! Cached hash of the python function; zero means not computed yet.
+    mutable hash_t hash_{0};
     //! PyModule that this python function belongs to
     RCP<const PyModule> pymodule_;
 public:
@@ -326,6 +326,12 @@ private:
     RCP<const PyFunctionClass> pyfunction_class_;
     PyObject *pyobject_;
 public:
+    /*! Python callback applications share `org.symengine.python.PyFunction`.
+     *  `pyobject` must be the application of `pyfunc_class` to `vec`, with
+     *  matching equality and hash semantics; retaining that object preserves
+     *  Python/SymPy hash interoperability. RTTI builds detect a foreign
+     *  implementation reusing the key before downcasting; no-RTTI builds rely
+     *  on exclusive ownership of the key. */
     PyFunction(const vec_basic &vec, const RCP<const PyFunctionClass> &pyfunc_class,
                PyObject *pyobject);
     ~PyFunction();

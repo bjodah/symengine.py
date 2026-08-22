@@ -14,6 +14,10 @@ namespace {
 
 std::atomic<bool> python_runtime_dead{false};
 
+//! Semantic domain owned by the Python callback-backed wrapper.
+constexpr const char *kPyFunctionSubtypeKey
+    = "org.symengine.python.PyFunction";
+
 void python_runtime_shutdown()
 {
     python_runtime_dead.store(true, std::memory_order_relaxed);
@@ -249,7 +253,7 @@ bool PyFunctionClass::__eq__(const PyFunctionClass &x) const {
 
 int PyFunctionClass::compare(const PyFunctionClass &x) const {
     if (__eq__(x)) return 0;
-    return PyObject_RichCompareBool(pyobject_, x.pyobject_, Py_LT) == 1 ? 1 : -1;
+    return PyObject_RichCompareBool(pyobject_, x.pyobject_, Py_LT) == 1 ? -1 : 1;
 }
 
 hash_t PyFunctionClass::hash() const {
@@ -260,7 +264,8 @@ hash_t PyFunctionClass::hash() const {
 
 // PyFunction
 PyFunction::PyFunction(const vec_basic &vec, const RCP<const PyFunctionClass> &pyfunc_class,
-           PyObject *pyobject) : FunctionWrapper(pyfunc_class->get_name(), std::move(vec)),
+           PyObject *pyobject) : FunctionWrapper(pyfunc_class->get_name(), std::move(vec),
+                                                 kPyFunctionSubtypeKey),
            pyfunction_class_{pyfunc_class}, pyobject_{pyobject} {
 
 }
@@ -293,19 +298,37 @@ RCP<const Basic> PyFunction::diff_impl(const RCP<const Symbol> &s) const {
 }
 
 hash_t PyFunction::__hash__() const {
+    // Python's application hash follows the callable-and-arguments equality
+    // refined below; the stable subtype key is constant throughout this domain.
     return PyObject_Hash(pyobject_);
 }
 
 bool PyFunction::__eq__(const Basic &o) const {
-    if (is_a<PyFunction>(o) and
-        pyfunction_class_->__eq__(*static_cast<const PyFunction &>(o).get_pyfunction_class()) and
-        unified_eq(get_vec(), static_cast<const PyFunction &>(o).get_vec()))
-        return true;
-    return false;
+    if (!is_a<FunctionWrapper>(o)) return false;
+    const FunctionWrapper &wrapper = down_cast<const FunctionWrapper &>(o);
+    if (get_name() != wrapper.get_name()
+        or function_wrapper_type_compare(*this, wrapper) != 0)
+        return false;
+#if HAVE_SYMENGINE_RTTI
+    if (!is_a_function_wrapper<PyFunction>(o)) return false;
+#endif
+    const PyFunction &other = static_cast<const PyFunction &>(o);
+    return pyfunction_class_->__eq__(*other.get_pyfunction_class())
+           and unified_eq(get_vec(), other.get_vec());
 }
 
 int PyFunction::compare(const Basic &o) const {
-    SYMENGINE_ASSERT(is_a<PyFunction>(o))
+    SYMENGINE_ASSERT(is_a<FunctionWrapper>(o))
+    const FunctionWrapper &wrapper = down_cast<const FunctionWrapper &>(o);
+    if (get_name() != wrapper.get_name())
+        return get_name() < wrapper.get_name() ? -1 : 1;
+    const int type_cmp = function_wrapper_type_compare(*this, wrapper);
+    if (type_cmp != 0) return type_cmp;
+#if HAVE_SYMENGINE_RTTI
+    if (!is_a_function_wrapper<PyFunction>(o))
+        throw SymEngineException(
+            "PyFunction stable subtype key used by another C++ implementation");
+#endif
     const PyFunction &s = static_cast<const PyFunction &>(o);
     int cmp = pyfunction_class_->compare(*s.get_pyfunction_class());
     if (cmp != 0) return cmp;
