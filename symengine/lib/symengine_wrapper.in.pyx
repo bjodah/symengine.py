@@ -3729,8 +3729,16 @@ cdef class DenseMatrixBase(MatrixBase):
 
     def dot(self, b):
         cdef DenseMatrixBase o = sympify(b)
-        if not (self.cols == o.rows or self.cols == o.cols or
-                self.rows == o.rows):
+        cdef bint compatible
+        if self.cols == o.rows:
+            compatible = o.cols == 1 or self.rows == o.cols
+        elif self.cols == o.cols:
+            compatible = o.rows == 1 or self.rows == o.rows
+        elif self.rows == o.rows:
+            compatible = o.cols == 1 or self.cols == o.cols
+        else:
+            compatible = False
+        if not compatible:
             raise ShapeError("Dimensions incorrect for dot product")
         cdef DenseMatrixBase result = self.__class__(self.rows, self.cols)
         symengine.dot(deref(symengine.static_cast_DenseMatrix(self.thisptr)), deref(symengine.static_cast_DenseMatrix(o.thisptr)), deref(symengine.static_cast_DenseMatrix(result.thisptr)))
@@ -4124,7 +4132,9 @@ cdef class DenseMatrixBase(MatrixBase):
 
     def jacobian(self, x):
         cdef DenseMatrixBase x_ = sympify(x)
-        cdef DenseMatrixBase R = self.__class__(self.nrows(), x.nrows())
+        if self.ncols() != 1 or x_.ncols() != 1:
+            raise ShapeError("Jacobian expressions and variables must be column vectors.")
+        cdef DenseMatrixBase R = self.__class__(self.nrows(), x_.nrows())
         symengine.jacobian(<const symengine.DenseMatrix &>deref(self.thisptr),
                 <const symengine.DenseMatrix &>deref(x_.thisptr),
                 <symengine.DenseMatrix &>deref(R.thisptr))

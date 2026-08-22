@@ -573,6 +573,13 @@ def test_jacobian():
     J = D.jacobian(x)
     assert J == J_correct
 
+    row_expressions = DenseMatrix(1, 2, [x.get(0, 0), x.get(1, 0)])
+    raises(ShapeError, lambda: row_expressions.jacobian(DenseMatrix([x.get(0, 0)])))
+
+    column_expression = DenseMatrix([x.get(0, 0)])
+    row_variables = DenseMatrix(1, 2, [x.get(0, 0), x.get(1, 0)])
+    raises(ShapeError, lambda: column_expression.jacobian(row_variables))
+
 
 def test_size():
     A = DenseMatrix(2, 2, [1, 2, 3, 4])
@@ -730,6 +737,9 @@ def test_dot():
     assert A.dot(B) == DenseMatrix(1, 3, [39, 54, 69])
     assert ones(1, 3).dot(ones(3, 1)) == 3
     raises(ShapeError, lambda: ones(2, 3).dot(ones(4, 5)))
+    raises(ShapeError, lambda: ones(1, 2).dot(ones(2, 3)))
+    raises(ShapeError, lambda: ones(2, 3).dot(ones(4, 3)))
+    raises(ShapeError, lambda: ones(2, 3).dot(ones(2, 4)))
 
 
 def test_cross():
