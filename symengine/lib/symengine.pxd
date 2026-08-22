@@ -98,17 +98,17 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
             iterator operator--()
             bint operator==(iterator)
             bint operator!=(iterator)
-        rcp_const_basic& operator[](rcp_const_basic&)
+        rcp_const_basic& operator[](rcp_const_basic&) except +
         void clear()
         bint empty()
         size_t size()
         void swap(map_basic_basic&)
         iterator begin()
         iterator end()
-        iterator find(rcp_const_basic&)
+        iterator find(rcp_const_basic&) except +
         void erase(iterator, iterator)
         void erase_it(iterator)
-        size_t erase(rcp_const_basic&)
+        size_t erase(rcp_const_basic&) except +
         pair[iterator, bint] insert(std_pair_rcp_const_basic_rcp_const_basic) except +
         iterator insert(iterator, std_pair_rcp_const_basic_rcp_const_basic) except +
         void insert(iterator, iterator) except +
@@ -128,7 +128,7 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
             bint operator!=(iterator) nogil
         iterator begin() nogil
         iterator end() nogil
-        iterator insert(rcp_const_basic&) nogil
+        iterator insert(rcp_const_basic&) except + nogil
 
     cdef cppclass multiset_basic "SymEngine::multiset_basic":
         cppclass iterator:
@@ -139,7 +139,7 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
             bint operator!=(iterator) nogil
         iterator begin() nogil
         iterator end() nogil
-        iterator insert(rcp_const_basic&) nogil
+        iterator insert(rcp_const_basic&) except + nogil
 
     cdef cppclass Basic:
         string __str__() except + nogil

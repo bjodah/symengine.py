@@ -18,6 +18,22 @@ std::atomic<bool> python_runtime_dead{false};
 constexpr const char *kPyFunctionSubtypeKey
     = "org.symengine.python.PyFunction";
 
+int checked_callable_compare(PyObject *lhs, PyObject *rhs, int operation,
+                             const char *relation)
+{
+    const int result = PyObject_RichCompareBool(lhs, rhs, operation);
+    if (result < 0) {
+        // Do not let a Python exception survive beside the C++ refusal.  The
+        // public wrapper boundary translates this SymEngineException into the
+        // documented RuntimeError.
+        PyErr_Clear();
+        throw SymEngineException(std::string{"PyFunction callable "}
+                                 + relation
+                                 + " comparison raised an exception");
+    }
+    return result;
+}
+
 void python_runtime_shutdown()
 {
     python_runtime_dead.store(true, std::memory_order_relaxed);
@@ -248,12 +264,30 @@ PyObject* PyFunctionClass::call(const vec_basic &vec) const {
 }
 
 bool PyFunctionClass::__eq__(const PyFunctionClass &x) const {
-    return PyObject_RichCompareBool(pyobject_, x.pyobject_, Py_EQ) == 1;
+    const int forward
+        = checked_callable_compare(pyobject_, x.pyobject_, Py_EQ, "equality");
+    const int reverse
+        = checked_callable_compare(x.pyobject_, pyobject_, Py_EQ, "equality");
+    if (forward != reverse)
+        throw SymEngineException(
+            "PyFunction callable equality is not symmetric");
+    return forward == 1;
 }
 
 int PyFunctionClass::compare(const PyFunctionClass &x) const {
     if (__eq__(x)) return 0;
-    return PyObject_RichCompareBool(pyobject_, x.pyobject_, Py_LT) == 1 ? -1 : 1;
+    const int forward = checked_callable_compare(pyobject_, x.pyobject_, Py_LT,
+                                                 "strict-order");
+    const int reverse = checked_callable_compare(x.pyobject_, pyobject_, Py_LT,
+                                                 "strict-order");
+    if (forward == reverse) {
+        if (forward == 1)
+            throw SymEngineException(
+                "PyFunction callable strict order is not antisymmetric");
+        throw SymEngineException(
+            "Unequal PyFunction callables do not define a strict total order");
+    }
+    return forward == 1 ? -1 : 1;
 }
 
 hash_t PyFunctionClass::hash() const {

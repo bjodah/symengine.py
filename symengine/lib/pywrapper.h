@@ -311,7 +311,12 @@ public:
     std::string get_name() const { return name_; }
     //! Create an instance of this class with arguments `vec`.
     PyObject* call(const vec_basic &vec) const;
+    /*! Require symmetric Python equality; comparison errors refuse rather
+     *  than leaving an active Python exception at the C++ boundary. */
     bool __eq__(const PyFunctionClass &x) const;
+    /*! Order unequal callables only when exactly one Python `<` direction is
+     *  true. Missing, partial, or inconsistent orders raise instead of using
+     *  process-local object identity as a canonical-order fallback. */
     int compare(const PyFunctionClass &x) const;
     hash_t hash() const;
 };

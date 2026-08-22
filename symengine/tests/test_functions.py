@@ -3,11 +3,12 @@ from symengine import (
     Rational, EulerGamma, Function, Subs, Derivative, LambertW, zeta, dirichlet_eta,
     zoo, pi, KroneckerDelta, LeviCivita, erf, erfc, oo, lowergamma, uppergamma, exp,
     loggamma, beta, polygamma, digamma, trigamma, sign, floor, ceiling, conjugate,
-    nan, Float, UnevaluatedExpr, FiniteSet
+    nan, Float, UnevaluatedExpr, FiniteSet, DictBasic
 )
 from symengine.test_utilities import raises
 
 import unittest
+import pytest
 
 try:
     import sympy
@@ -251,6 +252,125 @@ def test_PyFunction_callable_order():
     assert low == low_copy
     assert hash(low) == hash(low_copy) == hash(low_copy_application)
     assert len({low, low_copy}) == 1
+
+
+@unittest.skipUnless(have_sympy, "SymPy not installed")
+def test_PyFunction_callable_order_refuses_non_total_relations():
+    from symengine.lib.symengine_wrapper import PyFunction, sympy_module
+
+    class AppliedCallable:
+        def __init__(self, function, args):
+            self.function = function
+            self.args = tuple(args)
+
+        def __hash__(self):
+            # Exercise Basic's canonical comparator, independent of Python's
+            # application hash distribution.
+            return 0xF00
+
+        def __eq__(self, other):
+            return (isinstance(other, AppliedCallable)
+                    and self.function == other.function
+                    and self.args == other.args)
+
+    class CallbackBase:
+        def __init__(self, rank):
+            self.rank = rank
+
+        def __str__(self):
+            return "f"
+
+        def __hash__(self):
+            return hash((type(self), self.rank))
+
+        def __eq__(self, other):
+            return type(self) is type(other) and self.rank == other.rank
+
+        def __call__(self, *args):
+            return AppliedCallable(self, args)
+
+    class EqualityOnlyCallable(CallbackBase):
+        pass
+
+    class PartialOrderCallable(CallbackBase):
+        def __lt__(self, other):
+            return False
+
+    class InconsistentOrderCallable(CallbackBase):
+        def __lt__(self, other):
+            return self != other
+
+    class EqualityErrorCallable(CallbackBase):
+        __hash__ = CallbackBase.__hash__
+
+        def __eq__(self, other):
+            if type(self) is type(other) and self.rank != other.rank:
+                raise ValueError("opaque equality failure")
+            return super().__eq__(other)
+
+    class AsymmetricEqualityCallable(CallbackBase):
+        __hash__ = CallbackBase.__hash__
+
+        def __eq__(self, other):
+            return (type(self) is type(other)
+                    and self.rank <= other.rank)
+
+    def make_pair(callback_type):
+        x = Symbol("x")
+        y = Symbol("y")
+        first_class = callback_type(0)
+        second_class = callback_type(1)
+        first = PyFunction(first_class(x), [x], first_class, sympy_module)
+        second = PyFunction(second_class(y), [y], second_class, sympy_module)
+        return first, second
+
+    no_lt = make_pair(EqualityOnlyCallable)
+    for pair in (no_lt, tuple(reversed(no_lt))):
+        with pytest.raises(RuntimeError) as excinfo:
+            FiniteSet(*pair)
+        assert str(excinfo.value) == (
+            "PyFunction callable strict-order comparison raised an exception")
+
+    partial = make_pair(PartialOrderCallable)
+    for pair in (partial, tuple(reversed(partial))):
+        with pytest.raises(RuntimeError) as excinfo:
+            FiniteSet(*pair)
+        assert str(excinfo.value) == (
+            "Unequal PyFunction callables do not define a strict total order")
+
+        mapping = DictBasic()
+        mapping[pair[0]] = Integer(1)
+        for operation in (
+                lambda: mapping.__setitem__(pair[1], Integer(2)),
+                lambda: mapping.__getitem__(pair[1]),
+                lambda: mapping.__contains__(pair[1]),
+                lambda: mapping.__delitem__(pair[1])):
+            with pytest.raises(RuntimeError) as excinfo:
+                operation()
+            assert str(excinfo.value) == (
+                "Unequal PyFunction callables do not define a strict total order")
+        assert len(mapping) == 1
+
+    inconsistent = make_pair(InconsistentOrderCallable)
+    for pair in (inconsistent, tuple(reversed(inconsistent))):
+        with pytest.raises(RuntimeError) as excinfo:
+            FiniteSet(*pair)
+        assert str(excinfo.value) == (
+            "PyFunction callable strict order is not antisymmetric")
+
+    equality_error = make_pair(EqualityErrorCallable)
+    for pair in (equality_error, tuple(reversed(equality_error))):
+        with pytest.raises(RuntimeError) as excinfo:
+            FiniteSet(*pair)
+        assert str(excinfo.value) == (
+            "PyFunction callable equality comparison raised an exception")
+
+    asymmetric = make_pair(AsymmetricEqualityCallable)
+    for pair in (asymmetric, tuple(reversed(asymmetric))):
+        with pytest.raises(RuntimeError) as excinfo:
+            FiniteSet(*pair)
+        assert str(excinfo.value) == (
+            "PyFunction callable equality is not symmetric")
 
 
 def test_log():
