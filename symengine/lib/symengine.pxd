@@ -659,11 +659,11 @@ cdef extern from "<symengine/matrix.h>" namespace "SymEngine":
     cdef cppclass MatrixBase:
         const unsigned nrows() nogil
         const unsigned ncols() nogil
-        rcp_const_basic get(unsigned i, unsigned j) nogil
-        rcp_const_basic set(unsigned i, unsigned j, rcp_const_basic e) nogil
+        rcp_const_basic get(unsigned i, unsigned j) except + nogil
+        rcp_const_basic set(unsigned i, unsigned j, rcp_const_basic e) except + nogil
         string __str__() except + nogil
         bool eq(const MatrixBase &) nogil
-        rcp_const_basic det() nogil
+        rcp_const_basic det() except + nogil
         void inv(MatrixBase &) except + nogil
         bool is_square() nogil
         void add_matrix(const MatrixBase &other, MatrixBase &result) nogil
@@ -687,9 +687,9 @@ cdef extern from "<symengine/matrix.h>" namespace "SymEngine":
         void cholesky(MatrixBase &L) except + nogil
 
     cdef cppclass DenseMatrix(MatrixBase):
-        DenseMatrix()
-        DenseMatrix(unsigned i, unsigned j) nogil
-        DenseMatrix(unsigned i, unsigned j, const vec_basic &v) nogil
+        DenseMatrix() except +
+        DenseMatrix(unsigned i, unsigned j) except + nogil
+        DenseMatrix(unsigned i, unsigned j, const vec_basic &v) except + nogil
         void resize(unsigned i, unsigned j) nogil
         void row_join(const DenseMatrix &B) nogil
         void col_join(const DenseMatrix &B) nogil
@@ -697,7 +697,7 @@ cdef extern from "<symengine/matrix.h>" namespace "SymEngine":
         void col_insert(const DenseMatrix &B, unsigned pos) nogil
         void row_del(unsigned k) nogil
         void col_del(unsigned k) nogil
-        rcp_const_basic trace() nogil
+        rcp_const_basic trace() except + nogil
         tribool is_zero() nogil
         tribool is_real() nogil
         tribool is_diagonal() nogil
@@ -724,8 +724,8 @@ cdef extern from "<symengine/matrix.h>" namespace "SymEngine":
             const DenseMatrix &x, DenseMatrix &result) except + nogil
     void diff "SymEngine::sdiff"(const DenseMatrix &A,
             rcp_const_basic &x, DenseMatrix &result) except + nogil
-    void eye (DenseMatrix &A, int k) nogil
-    void diag(DenseMatrix &A, vec_basic &v, int k) nogil
+    void eye (DenseMatrix &A, int k) except + nogil
+    void diag(DenseMatrix &A, vec_basic &v, int k) except + nogil
     void ones(DenseMatrix &A) nogil
     void zeros(DenseMatrix &A) nogil
     void row_exchange_dense(DenseMatrix &A, unsigned i, unsigned j) nogil
@@ -733,7 +733,7 @@ cdef extern from "<symengine/matrix.h>" namespace "SymEngine":
     void row_add_row_dense(DenseMatrix &A, unsigned i, unsigned j, rcp_const_basic &c) nogil
     void column_exchange_dense(DenseMatrix &A, unsigned i, unsigned j) nogil
     void dot(const DenseMatrix &A, const DenseMatrix &B, DenseMatrix &C) nogil
-    void cross(const DenseMatrix &A, const DenseMatrix &B, DenseMatrix &C) nogil
+    void cross(const DenseMatrix &A, const DenseMatrix &B, DenseMatrix &C) except + nogil
 
 cdef extern from "<symengine/matrix.h>":
     void pivoted_LU (const DenseMatrix &A, DenseMatrix &L, DenseMatrix &U, vector[pair[int, int]] &P) except + nogil

@@ -3913,6 +3913,8 @@ cdef class DenseMatrixBase(MatrixBase):
         return self.conjugate_transpose()
 
     def trace(self):
+        if not self.is_square:
+            raise NonSquareMatrixError()
         return c2py(deref(symengine.static_cast_DenseMatrix(self.thisptr)).trace())
 
     @property

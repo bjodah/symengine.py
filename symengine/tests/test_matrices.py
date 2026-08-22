@@ -23,6 +23,9 @@ except ImportError:
 
 
 def test_init():
+    empty = DenseMatrix()
+    assert empty.shape == (0, 0)
+    assert empty.size == 0
     raises(ValueError, lambda: DenseMatrix(2, 1, [0]*4))
 
 
@@ -195,6 +198,9 @@ def test_det():
     A = DenseMatrix(3, 2, [1, 2, 3, 4, 5, 6])
     raises(NonSquareMatrixError, lambda: A.det())
 
+    empty = DenseMatrix()
+    assert empty.det() == 1
+
 
 def test_inv():
     A = DenseMatrix(2, 2, [1, 0, 0, 1])
@@ -347,6 +353,9 @@ def test_conjugate_transpose():
 def test_trace():
     A = DenseMatrix(2, 2, [1, 2, 3, 4])
     assert A.trace() == 5
+    assert DenseMatrix().trace() == 0
+    rectangular = DenseMatrix(3, 2, [1, 2, 3, 4, 5, 6])
+    raises(NonSquareMatrixError, lambda: rectangular.trace())
 
 
 def test_is_zero_matrix():
