@@ -2972,6 +2972,9 @@ class PyFunction(FunctionSymbol):
     strict total order through ``<``. Canonical containers raise
     ``RuntimeError`` when that order is missing, partial, inconsistent, or
     raises; they never fabricate an order from process-local object identity.
+    An unhashable application or a failing ``__hash__`` callback likewise
+    raises a clean ``RuntimeError`` rather than leaking the callback exception
+    alongside a wrapper result.
     """
 
     def __init__(Basic self, pyfunction = None, args = None, pyfunction_class=None, module=None):

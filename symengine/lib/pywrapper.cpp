@@ -34,6 +34,17 @@ int checked_callable_compare(PyObject *lhs, PyObject *rhs, int operation,
     return result;
 }
 
+hash_t checked_python_hash(PyObject *object, const char *subject)
+{
+    const Py_hash_t result = PyObject_Hash(object);
+    if (result == -1) {
+        PyErr_Clear();
+        throw SymEngineException(std::string{"PyFunction "} + subject
+                                 + " hash raised an exception");
+    }
+    return static_cast<hash_t>(result);
+}
+
 void python_runtime_shutdown()
 {
     python_runtime_dead.store(true, std::memory_order_relaxed);
@@ -290,12 +301,6 @@ int PyFunctionClass::compare(const PyFunctionClass &x) const {
     return forward == 1 ? -1 : 1;
 }
 
-hash_t PyFunctionClass::hash() const {
-    if (hash_ == 0)
-        hash_ = PyObject_Hash(pyobject_);
-    return hash_;
-}
-
 // PyFunction
 PyFunction::PyFunction(const vec_basic &vec, const RCP<const PyFunctionClass> &pyfunc_class,
            PyObject *pyobject) : FunctionWrapper(pyfunc_class->get_name(), std::move(vec),
@@ -334,7 +339,7 @@ RCP<const Basic> PyFunction::diff_impl(const RCP<const Symbol> &s) const {
 hash_t PyFunction::__hash__() const {
     // Python's application hash follows the callable-and-arguments equality
     // refined below; the stable subtype key is constant throughout this domain.
-    return PyObject_Hash(pyobject_);
+    return checked_python_hash(pyobject_, "application");
 }
 
 bool PyFunction::__eq__(const Basic &o) const {

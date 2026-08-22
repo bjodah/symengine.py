@@ -373,6 +373,63 @@ def test_PyFunction_callable_order_refuses_non_total_relations():
             "PyFunction callable equality is not symmetric")
 
 
+@unittest.skipUnless(have_sympy, "SymPy not installed")
+def test_PyFunction_application_hash_errors_are_clean():
+    from symengine.lib.symengine_wrapper import PyFunction, sympy_module
+
+    class ApplicationBase:
+        def __init__(self, function, args):
+            self.function = function
+            self.args = tuple(args)
+
+        def __eq__(self, other):
+            return (type(self) is type(other)
+                    and self.function == other.function
+                    and self.args == other.args)
+
+    class UnhashableApplication(ApplicationBase):
+        __hash__ = None
+
+    class RaisingHashApplication(ApplicationBase):
+        def __hash__(self):
+            raise ValueError("opaque hash failure")
+
+    class Callback:
+        def __init__(self, application_type):
+            self.application_type = application_type
+
+        def __str__(self):
+            return "f"
+
+        def __hash__(self):
+            return hash(self.application_type)
+
+        def __eq__(self, other):
+            return (isinstance(other, Callback)
+                    and self.application_type is other.application_type)
+
+        def __lt__(self, other):
+            return self.application_type.__name__ < other.application_type.__name__
+
+        def __call__(self, *args):
+            return self.application_type(self, args)
+
+    x = Symbol("x")
+    for application_type in (UnhashableApplication, RaisingHashApplication):
+        callback = Callback(application_type)
+        application = callback(x)
+        wrapped = PyFunction(application, [x], callback, sympy_module)
+        with pytest.raises(RuntimeError) as excinfo:
+            hash(wrapped)
+        assert str(excinfo.value) == (
+            "PyFunction application hash raised an exception")
+
+        # The Python error from the callback was consumed at the wrapper
+        # boundary; unrelated Python and SymEngine operations remain clean.
+        assert hash("still usable") == hash("still usable")
+        assert Integer(1) + Integer(1) == Integer(2)
+
+
 def test_log():
     x = Symbol("x")
     y = Symbol("y")
