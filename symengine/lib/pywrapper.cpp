@@ -18,6 +18,33 @@ std::atomic<bool> python_runtime_dead{false};
 constexpr const char *kPyFunctionSubtypeKey
     = "org.symengine.python.PyFunction";
 
+int checked_callable_compare(PyObject *lhs, PyObject *rhs, int operation,
+                             const char *relation)
+{
+    const int result = PyObject_RichCompareBool(lhs, rhs, operation);
+    if (result < 0) {
+        // Do not let a Python exception survive beside the C++ refusal.  The
+        // public wrapper boundary translates this SymEngineException into the
+        // documented RuntimeError.
+        PyErr_Clear();
+        throw SymEngineException(std::string{"PyFunction callable "}
+                                 + relation
+                                 + " comparison raised an exception");
+    }
+    return result;
+}
+
+hash_t checked_python_hash(PyObject *object, const char *subject)
+{
+    const Py_hash_t result = PyObject_Hash(object);
+    if (result == -1) {
+        PyErr_Clear();
+        throw SymEngineException(std::string{"PyFunction "} + subject
+                                 + " hash raised an exception");
+    }
+    return static_cast<hash_t>(result);
+}
+
 void python_runtime_shutdown()
 {
     python_runtime_dead.store(true, std::memory_order_relaxed);
@@ -248,18 +275,30 @@ PyObject* PyFunctionClass::call(const vec_basic &vec) const {
 }
 
 bool PyFunctionClass::__eq__(const PyFunctionClass &x) const {
-    return PyObject_RichCompareBool(pyobject_, x.pyobject_, Py_EQ) == 1;
+    const int forward
+        = checked_callable_compare(pyobject_, x.pyobject_, Py_EQ, "equality");
+    const int reverse
+        = checked_callable_compare(x.pyobject_, pyobject_, Py_EQ, "equality");
+    if (forward != reverse)
+        throw SymEngineException(
+            "PyFunction callable equality is not symmetric");
+    return forward == 1;
 }
 
 int PyFunctionClass::compare(const PyFunctionClass &x) const {
     if (__eq__(x)) return 0;
-    return PyObject_RichCompareBool(pyobject_, x.pyobject_, Py_LT) == 1 ? -1 : 1;
-}
-
-hash_t PyFunctionClass::hash() const {
-    if (hash_ == 0)
-        hash_ = PyObject_Hash(pyobject_);
-    return hash_;
+    const int forward = checked_callable_compare(pyobject_, x.pyobject_, Py_LT,
+                                                 "strict-order");
+    const int reverse = checked_callable_compare(x.pyobject_, pyobject_, Py_LT,
+                                                 "strict-order");
+    if (forward == reverse) {
+        if (forward == 1)
+            throw SymEngineException(
+                "PyFunction callable strict order is not antisymmetric");
+        throw SymEngineException(
+            "Unequal PyFunction callables do not define a strict total order");
+    }
+    return forward == 1 ? -1 : 1;
 }
 
 // PyFunction
@@ -300,7 +339,7 @@ RCP<const Basic> PyFunction::diff_impl(const RCP<const Symbol> &s) const {
 hash_t PyFunction::__hash__() const {
     // Python's application hash follows the callable-and-arguments equality
     // refined below; the stable subtype key is constant throughout this domain.
-    return PyObject_Hash(pyobject_);
+    return checked_python_hash(pyobject_, "application");
 }
 
 bool PyFunction::__eq__(const Basic &o) const {

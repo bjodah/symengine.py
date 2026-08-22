@@ -2967,7 +2967,14 @@ class PyFunction(FunctionSymbol):
     ``pyfunction`` must be the result of applying ``pyfunction_class`` to
     exactly ``args``. Its equality and hash must therefore describe the same
     callable and arguments; the retained application keeps hashes compatible
-    with the corresponding Python or SymPy object.
+    with the corresponding Python or SymPy object. Unequal callback classes
+    with the same displayed name must also define symmetric equality and a
+    strict total order through ``<``. Canonical containers raise
+    ``RuntimeError`` when that order is missing, partial, inconsistent, or
+    raises; they never fabricate an order from process-local object identity.
+    An unhashable application or a failing ``__hash__`` callback likewise
+    raises a clean ``RuntimeError`` rather than leaking the callback exception
+    alongside a wrapper result.
     """
 
     def __init__(Basic self, pyfunction = None, args = None, pyfunction_class=None, module=None):
