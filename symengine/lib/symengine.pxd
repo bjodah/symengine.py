@@ -666,18 +666,18 @@ cdef extern from "<symengine/matrix.h>" namespace "SymEngine":
         rcp_const_basic det() except + nogil
         void inv(MatrixBase &) except + nogil
         bool is_square() nogil
-        void add_matrix(const MatrixBase &other, MatrixBase &result) nogil
-        void mul_matrix(const MatrixBase &other, MatrixBase &result) nogil
-        void elementwise_mul_matrix(const MatrixBase &other, MatrixBase &result) nogil
-        void conjugate(MatrixBase &result) nogil
-        void conjugate_transpose(MatrixBase &result) nogil
-        void add_scalar(rcp_const_basic k, MatrixBase &result) nogil
-        void mul_scalar(rcp_const_basic k, MatrixBase &result) nogil
-        void transpose(MatrixBase &result) nogil
+        void add_matrix(const MatrixBase &other, MatrixBase &result) except + nogil
+        void mul_matrix(const MatrixBase &other, MatrixBase &result) except + nogil
+        void elementwise_mul_matrix(const MatrixBase &other, MatrixBase &result) except + nogil
+        void conjugate(MatrixBase &result) except + nogil
+        void conjugate_transpose(MatrixBase &result) except + nogil
+        void add_scalar(rcp_const_basic k, MatrixBase &result) except + nogil
+        void mul_scalar(rcp_const_basic k, MatrixBase &result) except + nogil
+        void transpose(MatrixBase &result) except + nogil
         void submatrix(MatrixBase &result,
                        unsigned row_start, unsigned col_start,
                        unsigned row_end, unsigned col_end,
-                       unsigned row_step, unsigned col_step) nogil
+                       unsigned row_step, unsigned col_step) except + nogil
         void LU(MatrixBase &L, MatrixBase &U) except + nogil
         void LDL(MatrixBase &L, MatrixBase &D) except + nogil
         void LU_solve(const MatrixBase &b, MatrixBase &x) except + nogil
@@ -690,13 +690,13 @@ cdef extern from "<symengine/matrix.h>" namespace "SymEngine":
         DenseMatrix() except +
         DenseMatrix(unsigned i, unsigned j) except + nogil
         DenseMatrix(unsigned i, unsigned j, const vec_basic &v) except + nogil
-        void resize(unsigned i, unsigned j) nogil
-        void row_join(const DenseMatrix &B) nogil
-        void col_join(const DenseMatrix &B) nogil
-        void row_insert(const DenseMatrix &B, unsigned pos) nogil
-        void col_insert(const DenseMatrix &B, unsigned pos) nogil
-        void row_del(unsigned k) nogil
-        void col_del(unsigned k) nogil
+        void resize(unsigned i, unsigned j) except + nogil
+        void row_join(const DenseMatrix &B) except + nogil
+        void col_join(const DenseMatrix &B) except + nogil
+        void row_insert(const DenseMatrix &B, unsigned pos) except + nogil
+        void col_insert(const DenseMatrix &B, unsigned pos) except + nogil
+        void row_del(unsigned k) except + nogil
+        void col_del(unsigned k) except + nogil
         rcp_const_basic trace() except + nogil
         tribool is_zero() nogil
         tribool is_real() nogil
@@ -728,11 +728,11 @@ cdef extern from "<symengine/matrix.h>" namespace "SymEngine":
     void diag(DenseMatrix &A, vec_basic &v, int k) except + nogil
     void ones(DenseMatrix &A) nogil
     void zeros(DenseMatrix &A) nogil
-    void row_exchange_dense(DenseMatrix &A, unsigned i, unsigned j) nogil
-    void row_mul_scalar_dense(DenseMatrix &A, unsigned i, rcp_const_basic &c) nogil
-    void row_add_row_dense(DenseMatrix &A, unsigned i, unsigned j, rcp_const_basic &c) nogil
-    void column_exchange_dense(DenseMatrix &A, unsigned i, unsigned j) nogil
-    void dot(const DenseMatrix &A, const DenseMatrix &B, DenseMatrix &C) nogil
+    void row_exchange_dense(DenseMatrix &A, unsigned i, unsigned j) except + nogil
+    void row_mul_scalar_dense(DenseMatrix &A, unsigned i, rcp_const_basic &c) except + nogil
+    void row_add_row_dense(DenseMatrix &A, unsigned i, unsigned j, rcp_const_basic &c) except + nogil
+    void column_exchange_dense(DenseMatrix &A, unsigned i, unsigned j) except + nogil
+    void dot(const DenseMatrix &A, const DenseMatrix &B, DenseMatrix &C) except + nogil
     void cross(const DenseMatrix &A, const DenseMatrix &B, DenseMatrix &C) except + nogil
 
 cdef extern from "<symengine/matrix.h>":

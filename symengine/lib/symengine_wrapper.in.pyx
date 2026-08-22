@@ -3729,6 +3729,9 @@ cdef class DenseMatrixBase(MatrixBase):
 
     def dot(self, b):
         cdef DenseMatrixBase o = sympify(b)
+        if not (self.cols == o.rows or self.cols == o.cols or
+                self.rows == o.rows):
+            raise ShapeError("Dimensions incorrect for dot product")
         cdef DenseMatrixBase result = self.__class__(self.rows, self.cols)
         symengine.dot(deref(symengine.static_cast_DenseMatrix(self.thisptr)), deref(symengine.static_cast_DenseMatrix(o.thisptr)), deref(symengine.static_cast_DenseMatrix(result.thisptr)))
         if len(result) == 1:
@@ -4229,6 +4232,12 @@ class DenseMatrixBaseIter(object):
 cdef class MutableDenseMatrix(DenseMatrixBase):
 
     def col_swap(self, i, j):
+        if i < 0:
+            i += self.cols
+        if j < 0:
+            j += self.cols
+        if i < 0 or i >= self.cols or j < 0 or j >= self.cols:
+            raise IndexError("Column index out of range")
         symengine.column_exchange_dense(deref(symengine.static_cast_DenseMatrix(self.thisptr)), i, j)
 
     def fill(self, value):
@@ -4237,15 +4246,33 @@ cdef class MutableDenseMatrix(DenseMatrixBase):
                 self[i, j] = value
 
     def row_swap(self, i, j):
+        if i < 0:
+            i += self.rows
+        if j < 0:
+            j += self.rows
+        if i < 0 or i >= self.rows or j < 0 or j >= self.rows:
+            raise IndexError("Row index out of range")
         symengine.row_exchange_dense(deref(symengine.static_cast_DenseMatrix(self.thisptr)), i, j)
 
     def rowmul(self, i, c, *args):
-        cdef Basic _c = sympify(c)
+        cdef Basic _c
+        if i < 0:
+            i += self.rows
+        if i < 0 or i >= self.rows:
+            raise IndexError("Row index out of range")
+        _c = sympify(c)
         symengine.row_mul_scalar_dense(deref(symengine.static_cast_DenseMatrix(self.thisptr)), i, _c.thisptr.as_rcp())
         return self
 
     def rowadd(self, i, j, c, *args):
-        cdef Basic _c = sympify(c)
+        cdef Basic _c
+        if i < 0:
+            i += self.rows
+        if j < 0:
+            j += self.rows
+        if i < 0 or i >= self.rows or j < 0 or j >= self.rows:
+            raise IndexError("Row index out of range")
+        _c = sympify(c)
         symengine.row_add_row_dense(deref(symengine.static_cast_DenseMatrix(self.thisptr)), i, j, _c.thisptr.as_rcp())
         return self
 

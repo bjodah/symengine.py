@@ -616,6 +616,9 @@ def test_col_swap():
     B = DenseMatrix(2, 2, [2, 1, 4, 3])
     A.col_swap(0, 1)
     assert A == B
+    A.col_swap(0, 0)
+    assert A == B
+    raises(IndexError, lambda: A.col_swap(0, 2))
 
 
 def test_fill():
@@ -633,6 +636,9 @@ def test_row_swap():
     B = DenseMatrix(2, 2, [3, 4, 1, 2])
     A.row_swap(0, 1)
     assert A == B
+    A.row_swap(0, 0)
+    assert A == B
+    raises(IndexError, lambda: A.row_swap(0, 2))
 
 
 def test_row_col_del():
@@ -648,6 +654,13 @@ def test_row_col_del():
     e = DenseMatrix(3, 3, [1, 2, 3, 4, 5, 6, 7, 8, 9])
     assert e.row_del(1) == DenseMatrix([[1, 2, 3], [7, 8, 9]])
     assert e.col_del(1) == DenseMatrix([[1, 3], [7, 9]])
+
+    row = DenseMatrix(1, 3, [1, 2, 3])
+    row.row_del(0)
+    assert row.shape == (0, 3)
+    column = DenseMatrix(3, 1, [1, 2, 3])
+    column.col_del(0)
+    assert column.shape == (3, 0)
 
 
 def test_row_join():
@@ -687,6 +700,7 @@ def test_rowmul():
     assert M.rowmul(2, 2) == DenseMatrix([[1, 1, 1],
                                           [1, 1, 1],
                                           [2, 2, 2]])
+    raises(IndexError, lambda: M.rowmul(3, 2))
 
 
 def test_rowadd():
@@ -694,6 +708,7 @@ def test_rowadd():
     assert M.rowadd(2, 1, 1) == DenseMatrix([[1, 1, 1],
                                              [1, 1, 1],
                                              [2, 2, 2]])
+    raises(IndexError, lambda: M.rowadd(3, 1, 1))
 
 
 def test_row_col():
@@ -714,6 +729,7 @@ def test_dot():
     B = DenseMatrix(2, 1, [7, 8])
     assert A.dot(B) == DenseMatrix(1, 3, [39, 54, 69])
     assert ones(1, 3).dot(ones(3, 1)) == 3
+    raises(ShapeError, lambda: ones(2, 3).dot(ones(4, 5)))
 
 
 def test_cross():
