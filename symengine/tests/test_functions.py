@@ -539,7 +539,23 @@ def test_erfc():
 
 
 def test_lowergamma():
+    x = Symbol("x")
     assert lowergamma(1, 2) == 1 - exp(-2)
+
+    for parameter in (0, -1, -2):
+        value = lowergamma(parameter, x)
+        assert isinstance(value, lowergamma)
+        assert not isinstance(value, uppergamma)
+        assert str(value) == "lowergamma(%d, x)" % parameter
+        assert sympify(str(value)) == value
+        assert value.diff(x) == x**(parameter - 1)*exp(-x)
+
+    half = Rational(1, 2)
+    assert lowergamma(half, x) == sqrt(pi)*erf(sqrt(x))
+    minus_half = Rational(-1, 2)
+    assert lowergamma(minus_half, x) == (
+        lowergamma(half, x) + x**minus_half*exp(-x)
+    )/minus_half
 
 
 def test_uppergamma():
