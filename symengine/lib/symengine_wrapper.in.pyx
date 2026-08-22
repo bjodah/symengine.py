@@ -2962,6 +2962,13 @@ cdef class PyNumber(Number):
 
 
 class PyFunction(FunctionSymbol):
+    """A callback-backed application with coordinated Python identity.
+
+    ``pyfunction`` must be the result of applying ``pyfunction_class`` to
+    exactly ``args``. Its equality and hash must therefore describe the same
+    callable and arguments; the retained application keeps hashes compatible
+    with the corresponding Python or SymPy object.
+    """
 
     def __init__(Basic self, pyfunction = None, args = None, pyfunction_class=None, module=None):
         if pyfunction is None:
