@@ -326,6 +326,10 @@ private:
     RCP<const PyFunctionClass> pyfunction_class_;
     PyObject *pyobject_;
 public:
+    /*! Python callback applications share `org.symengine.python.PyFunction`;
+     *  the custom identity methods refine that coordinated, exclusively owned
+     *  domain. Equality rejects and ordering throws on a foreign key collision
+     *  before any concrete downcast. */
     PyFunction(const vec_basic &vec, const RCP<const PyFunctionClass> &pyfunc_class,
                PyObject *pyobject);
     ~PyFunction();
