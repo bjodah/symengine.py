@@ -3,7 +3,7 @@ from symengine import (
     Rational, EulerGamma, Function, Subs, Derivative, LambertW, zeta, dirichlet_eta,
     zoo, pi, KroneckerDelta, LeviCivita, erf, erfc, oo, lowergamma, uppergamma, exp,
     loggamma, beta, polygamma, digamma, trigamma, sign, floor, ceiling, conjugate,
-    nan, Float, UnevaluatedExpr, FiniteSet, DictBasic
+    nan, Float, UnevaluatedExpr, FiniteSet, DictBasic, sympify
 )
 from symengine.test_utilities import raises
 
@@ -543,8 +543,24 @@ def test_lowergamma():
 
 
 def test_uppergamma():
+    x = Symbol("x")
     assert uppergamma(1, 2) == exp(-2)
     assert uppergamma(4, 0) == 6
+
+    for parameter in (0, -1, -2):
+        value = uppergamma(parameter, x)
+        assert isinstance(value, uppergamma)
+        assert not isinstance(value, lowergamma)
+        assert str(value) == "uppergamma(%d, x)" % parameter
+        assert sympify(str(value)) == value
+        assert value.diff(x) == -x**(parameter - 1)*exp(-x)
+
+    half = Rational(1, 2)
+    assert uppergamma(half, x) == sqrt(pi)*erfc(sqrt(x))
+    minus_half = Rational(-1, 2)
+    assert uppergamma(minus_half, x) == (
+        uppergamma(half, x) - x**minus_half*exp(-x)
+    )/minus_half
 
 
 def test_loggamma():
