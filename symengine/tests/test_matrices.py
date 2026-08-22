@@ -27,6 +27,7 @@ def test_init():
     assert empty.shape == (0, 0)
     assert empty.size == 0
     raises(ValueError, lambda: DenseMatrix(2, 1, [0]*4))
+    assert DenseMatrix(0, 7, []).shape == (0, 7)
 
 
 def test_get():
@@ -549,6 +550,16 @@ def test_str_repr():
     d = DenseMatrix(3, 2, [1, 2, 3, 4, 5, 6])
     assert str(d) == '[1, 2]\n[3, 4]\n[5, 6]\n'
     assert str(d) == repr(d)
+
+    maximum = 2**32 - 1
+    maximum_rows = DenseMatrix(maximum, 0)
+    explicit_maximum_rows = DenseMatrix(maximum, 0, [])
+    maximum_columns = DenseMatrix(0, maximum, [])
+    assert maximum_rows == explicit_maximum_rows
+    assert maximum_rows != maximum_columns
+    assert str(maximum_rows) == '[%s x 0 empty matrix]\n' % maximum
+    assert repr(maximum_rows) == str(maximum_rows)
+    assert str(maximum_columns) == '[0 x %s empty matrix]\n' % maximum
 
 
 def test_DenseMatrix_symbols():
