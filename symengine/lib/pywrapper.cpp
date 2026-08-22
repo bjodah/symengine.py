@@ -249,7 +249,7 @@ bool PyFunctionClass::__eq__(const PyFunctionClass &x) const {
 
 int PyFunctionClass::compare(const PyFunctionClass &x) const {
     if (__eq__(x)) return 0;
-    return PyObject_RichCompareBool(pyobject_, x.pyobject_, Py_LT) == 1 ? 1 : -1;
+    return PyObject_RichCompareBool(pyobject_, x.pyobject_, Py_LT) == 1 ? -1 : 1;
 }
 
 hash_t PyFunctionClass::hash() const {

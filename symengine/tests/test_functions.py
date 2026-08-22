@@ -183,6 +183,45 @@ def test_FunctionWrapper():
     assert abs(float(v) - 100.00000000) < 1e-7
 
 
+@unittest.skipUnless(have_sympy, "SymPy not installed")
+def test_PyFunction_callable_order():
+    from symengine.lib.symengine_wrapper import PyFunction, sympy_module
+
+    class OrderedCallable:
+        def __init__(self, name):
+            self.name = name
+
+        def __str__(self):
+            return self.name
+
+        def __hash__(self):
+            return hash(self.name)
+
+        def __eq__(self, other):
+            return isinstance(other, OrderedCallable) and self.name == other.name
+
+        def __lt__(self, other):
+            return self.name < other.name
+
+    class AppliedCallable:
+        def __init__(self, function):
+            self.function = function
+
+        def __hash__(self):
+            return hash(self.function)
+
+        def __eq__(self, other):
+            return (isinstance(other, AppliedCallable)
+                    and self.function == other.function)
+
+    x = Symbol("x")
+    a_class = OrderedCallable("a")
+    b_class = OrderedCallable("b")
+    a = PyFunction(AppliedCallable(a_class), [x], a_class, sympy_module)
+    b = PyFunction(AppliedCallable(b_class), [x], b_class, sympy_module)
+    assert str(a + b) == "a(x) + b(x)"
+
+
 def test_log():
     x = Symbol("x")
     y = Symbol("y")
