@@ -28,6 +28,14 @@ def test_init():
     assert empty.size == 0
     raises(ValueError, lambda: DenseMatrix(2, 1, [0]*4))
     assert DenseMatrix(0, 7, []).shape == (0, 7)
+    for args in ((0, 7, [1]), (0, 0, [1])):
+        try:
+            DenseMatrix(*args)
+        except Exception as exc:
+            assert type(exc) is ValueError
+            assert str(exc) == "sizes don't match."
+        else:
+            assert False
 
 
 def test_get():

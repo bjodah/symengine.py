@@ -3445,7 +3445,7 @@ cdef class DenseMatrixBase(MatrixBase):
                     row = row + 1
         if (row == 0):
             if (v_.size() != 0):
-                self.thisptr = new symengine.DenseMatrix(0, 0, v_)
+                self.thisptr = new symengine.DenseMatrix()
                 raise ValueError("sizes don't match.")
             else:
                 if col is None:
