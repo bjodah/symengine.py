@@ -9,8 +9,13 @@ from symengine.lib.symengine_wrapper import (Subs, Derivative, RealMPFR,
         KroneckerDelta, LeviCivita, erf, erfc, lowergamma, uppergamma,
         loggamma, beta, polygamma, sign, floor, ceiling, conjugate, And,
         Or, Not, Xor, Piecewise, Interval, EmptySet, FiniteSet, Contains,
-        Union, Complement, UniversalSet, Reals, Rationals, Integers)
+        Union, Complement, UniversalSet, Reals, Rationals, Integers,
+        sympy_module, sage_module)
 import unittest
+import pytest
+import subprocess
+import sys
+import os
 
 # Note: We test _sympy_() for SymEngine -> SymPy conversion, as those are
 # methods that are implemented in this library. Users can simply use
@@ -772,6 +777,7 @@ def test_pynumber():
     b = sympify(a)
 
     assert isinstance(b, PyNumber)
+    assert hash(b) == hash(a)
 
     a = a + 1
     b = b + 1
@@ -805,6 +811,265 @@ def test_pynumber():
 
     b = b / x
     assert isinstance(b, PyNumber)
+
+
+class _CallbackNumber:
+    def __init__(self, value, fail=None, order="total"):
+        self.value = value
+        self.fail = fail
+        self.order = order
+
+    def _raise(self, operation):
+        arithmetic = {"add", "sub", "rsub", "mul", "div", "rdiv", "pow",
+                      "rpow"}
+        if (self.fail == operation
+                or (self.fail == "all" and operation in arithmetic)):
+            raise ValueError("raised " + operation)
+
+    @staticmethod
+    def _value(other):
+        return other.value if isinstance(other, _CallbackNumber) else other
+
+    def __eq__(self, other):
+        self._raise("eq")
+        return self.value == self._value(other)
+
+    def __lt__(self, other):
+        self._raise("lt")
+        if self.order == "unordered":
+            return False
+        if self.order == "inconsistent":
+            return self.value != self._value(other)
+        return self.value < self._value(other)
+
+    def __gt__(self, other):
+        self._raise("lt")
+        if self.order == "unordered":
+            return False
+        if self.order == "inconsistent":
+            return self.value != self._value(other)
+        return self.value > self._value(other)
+
+    def __hash__(self):
+        self._raise("hash")
+        return hash(("CallbackNumber", self.value))
+
+    def __add__(self, other):
+        self._raise("add")
+        return _CallbackNumber(self.value + self._value(other))
+
+    def __sub__(self, other):
+        self._raise("sub")
+        return _CallbackNumber(self.value - self._value(other))
+
+    def __rsub__(self, other):
+        self._raise("rsub")
+        return _CallbackNumber(self._value(other) - self.value)
+
+    def __mul__(self, other):
+        self._raise("mul")
+        return _CallbackNumber(self.value * self._value(other))
+
+    def __truediv__(self, other):
+        self._raise("div")
+        return _CallbackNumber(self.value / self._value(other))
+
+    def __rtruediv__(self, other):
+        self._raise("rdiv")
+        return _CallbackNumber(self._value(other) / self.value)
+
+    def __pow__(self, other, modulo=None):
+        self._raise("pow")
+        return _CallbackNumber(self.value ** self._value(other))
+
+    def __rpow__(self, other):
+        self._raise("rpow")
+        return _CallbackNumber(self._value(other) ** self.value)
+
+    def __str__(self):
+        self._raise("str")
+        return "callback(%s)" % self.value
+
+    def n(self, precision):
+        self._raise("eval")
+        return sympy.Float(self.value, precision)
+
+
+def _callback_number(value, fail=None, order="total"):
+    return PyNumber(_CallbackNumber(value, fail, order), sympy_module)
+
+
+@unittest.skipIf(not have_sympy, "SymPy not installed")
+def test_pynumber_checked_callbacks_and_total_order():
+    raw = _CallbackNumber(2)
+    a = PyNumber(raw, sympy_module)
+    b = _callback_number(3)
+    assert hash(a) == hash(raw)
+    assert a != b
+    assert len(FiniteSet(a, b).args) == 2
+    assert a.is_positive
+    assert not a.is_negative
+    assert not a.is_zero
+    assert str(a) == "callback(2)"
+
+    for failure, expression in [
+            ("add", lambda x: x + Integer(1)),
+            ("all", lambda x: x - Integer(1)),
+            ("all", lambda x: Integer(1) - x),
+            ("mul", lambda x: x * Integer(2)),
+            ("all", lambda x: x / Integer(2)),
+            ("all", lambda x: Integer(2) / x),
+            ("pow", lambda x: x ** Integer(2)),
+            ("rpow", lambda x: Integer(2) ** x),
+    ]:
+        with pytest.raises(RuntimeError, match="callback raised"):
+            expression(_callback_number(2, fail=failure))
+
+    with pytest.raises(RuntimeError, match="hash raised"):
+        hash(_callback_number(2, fail="hash"))
+    with pytest.raises(RuntimeError, match="equality"):
+        _callback_number(2, fail="eq") == _callback_number(3)
+    with pytest.raises(RuntimeError, match="less-than"):
+        FiniteSet(_callback_number(2, fail="lt"), _callback_number(3))
+    with pytest.raises(RuntimeError, match="unordered"):
+        FiniteSet(_callback_number(2, order="unordered"),
+                  _callback_number(3, order="unordered"))
+    with pytest.raises(RuntimeError, match="inconsistent"):
+        FiniteSet(_callback_number(2, order="inconsistent"),
+                  _callback_number(3, order="inconsistent"))
+    with pytest.raises(RuntimeError, match="zero predicate"):
+        _callback_number(2, fail="eq").is_zero
+    with pytest.raises(RuntimeError, match="sign predicate"):
+        _callback_number(2, fail="lt").is_positive
+    with pytest.raises(RuntimeError, match="string"):
+        str(_callback_number(2, fail="str"))
+    with pytest.raises(RuntimeError, match="numeric conversion"):
+        _callback_number(2, fail="eval").n(30)
+
+
+@unittest.skipIf(not have_sympy, "SymPy not installed")
+def test_pynumber_finite_field_distinct_values_are_retained():
+    field = sympy.FF(7)
+    three = sympify(field(3))
+    four = sympify(field(4))
+    assert isinstance(three, PyNumber)
+    assert isinstance(four, PyNumber)
+    assert three != four
+    assert len(FiniteSet(three, four).args) == 2
+
+
+@unittest.skipIf(not have_sympy, "SymPy not installed")
+def test_pynumber_exact_dispatch_and_module_identity(monkeypatch):
+    import builtins
+    import symengine.lib.symengine_wrapper as wrapper
+
+    sympy_backed = PyNumber(2, sympy_module)
+    sage_backed = PyNumber(2, sage_module)
+    assert wrapper._is_exact_pynumber(sympy_backed)
+    assert wrapper._is_exact_pynumber(sage_backed)
+    assert not wrapper._is_exact_pynumber(Integer(2))
+
+    assert sympy_backed != sage_backed
+    assert hash(sympy_backed) == hash(sage_backed) == hash(2)
+    assert len(FiniteSet(sympy_backed, sage_backed).args) == 2
+    assert (sympy_backed + Integer(1)).pyobject() == sympy.Integer(3)
+
+    real_import = builtins.__import__
+
+    def refuse_sage(name, *args, **kwargs):
+        if name == "sage" or name.startswith("sage."):
+            raise ImportError("deliberately unavailable Sage runtime")
+        return real_import(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, "__import__", refuse_sage)
+    with pytest.raises(RuntimeError, match="conversion callback raised"):
+        sage_backed + Integer(1)
+
+
+@pytest.mark.parametrize("number_subtype_key", [
+    b"org.example.foreign.NumberWrapper",
+    b"org.symengine.python.PyNumber/",
+])
+def test_pynumber_rejects_unowned_or_empty_module_identity(number_subtype_key):
+    import symengine.lib.symengine_wrapper as wrapper
+
+    with pytest.raises(RuntimeError, match="not ownership-qualified"):
+        wrapper._test_pymodule_number_subtype_key(number_subtype_key)
+
+
+@pytest.mark.parametrize(
+    "invalid_case", ["empty", "direct_new", "no_module", "no_value"])
+def test_pynumber_invalid_construction_survives_subprocess(invalid_case):
+    import symengine.lib.symengine_wrapper as wrapper
+
+    code = r'''
+import sys
+import types
+
+sys.path.insert(0, sys.argv[1])
+version = types.ModuleType("symengine._version")
+version.__version__ = "subprocess-test"
+sys.modules["symengine._version"] = version
+import symengine.lib.symengine_wrapper as wrapper
+case = sys.argv[2]
+try:
+    if case == "empty":
+        value = wrapper.PyNumber()
+        str(value)
+    elif case == "direct_new":
+        value = wrapper.PyNumber.__new__(wrapper.PyNumber)
+        value.pyobject()
+    elif case == "no_module":
+        wrapper.PyNumber(object(), None)
+    else:
+        wrapper.PyNumber(None, wrapper.sympy_module)
+except TypeError:
+    print("alive-after-" + case)
+else:
+    raise AssertionError("invalid PyNumber construction succeeded")
+'''
+    package_root = os.path.dirname(os.path.dirname(os.path.dirname(
+        wrapper.__file__)))
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", code, package_root, invalid_case],
+        text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "alive-after-" + invalid_case
+
+
+def test_pynumber_cpp_constructor_failure_releases_reference_in_subprocess():
+    import symengine.lib.symengine_wrapper as wrapper
+
+    code = r'''
+import sys
+import types
+
+sys.path.insert(0, sys.argv[1])
+version = types.ModuleType("symengine._version")
+version.__version__ = "subprocess-test"
+sys.modules["symengine._version"] = version
+import symengine.lib.symengine_wrapper as wrapper
+
+empty_module = wrapper.PyModule.__new__(wrapper.PyModule)
+value = object()
+baseline = sys.getrefcount(value)
+for index in range(200):
+    try:
+        wrapper.PyNumber(value, empty_module)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("empty PyModule shell was accepted")
+    if sys.getrefcount(value) != baseline:
+        raise AssertionError("reference count changed at iteration %d" % index)
+print("alive-with-stable-refcount")
+'''
+    package_root = os.path.dirname(os.path.dirname(os.path.dirname(
+        wrapper.__file__)))
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", code, package_root],
+        text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "alive-with-stable-refcount"
 
 
 @unittest.skipIf(not have_sympy, "SymPy not installed")

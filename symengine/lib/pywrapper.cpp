@@ -14,9 +14,34 @@ namespace {
 
 std::atomic<bool> python_runtime_dead{false};
 
+//! Ownership prefix reserved for Python callback-backed numeric domains.
+constexpr const char *kPyNumberSubtypePrefix
+    = "org.symengine.python.PyNumber/";
+
 //! Semantic domain owned by the Python callback-backed wrapper.
 constexpr const char *kPyFunctionSubtypeKey
     = "org.symengine.python.PyFunction";
+
+const PyNumber &checked_py_number(const NumberWrapper &other)
+{
+#if HAVE_SYMENGINE_RTTI
+    if (!is_a_number_wrapper<PyNumber>(other)) {
+        throw SymEngineException(
+            "PyNumber stable subtype key used by another C++ implementation");
+    }
+#endif
+    return static_cast<const PyNumber &>(other);
+}
+
+const PyNumber *same_py_number(const PyNumber &self, const Number &other)
+{
+    if (!is_a<NumberWrapper>(other))
+        return nullptr;
+    const auto &wrapper = down_cast<const NumberWrapper &>(other);
+    if (number_wrapper_type_compare(self, wrapper) != 0)
+        return nullptr;
+    return &checked_py_number(wrapper);
+}
 
 int checked_callable_compare(PyObject *lhs, PyObject *rhs, int operation,
                              const char *relation)
@@ -34,15 +59,111 @@ int checked_callable_compare(PyObject *lhs, PyObject *rhs, int operation,
     return result;
 }
 
+[[noreturn]] void python_callback_failed(const std::string &subject,
+                                         const char *operation)
+{
+    PyErr_Clear();
+    throw SymEngineException(subject + " " + operation
+                             + " callback raised an exception");
+}
+
+int checked_python_compare(PyObject *lhs, PyObject *rhs, int operation,
+                           const std::string &subject, const char *relation)
+{
+    const int result = PyObject_RichCompareBool(lhs, rhs, operation);
+    if (result < 0)
+        python_callback_failed(subject, relation);
+    return result;
+}
+
+bool checked_symmetric_equality(PyObject *lhs, PyObject *rhs,
+                                const std::string &subject)
+{
+    const int forward
+        = checked_python_compare(lhs, rhs, Py_EQ, subject, "equality");
+    const int reverse
+        = checked_python_compare(rhs, lhs, Py_EQ, subject, "equality");
+    if (forward != reverse)
+        throw SymEngineException(subject + " equality is not symmetric");
+    return forward == 1;
+}
+
+int checked_strict_order(PyObject *lhs, PyObject *rhs,
+                         const std::string &subject)
+{
+    const int forward
+        = checked_python_compare(lhs, rhs, Py_LT, subject, "less-than");
+    const int reverse
+        = checked_python_compare(rhs, lhs, Py_LT, subject, "less-than");
+    if (forward == reverse) {
+        throw SymEngineException(subject
+                                 + (forward == 1
+                                        ? " less-than order is inconsistent"
+                                        : " unequal values are unordered"));
+    }
+    return forward == 1 ? -1 : 1;
+}
+
 hash_t checked_python_hash(PyObject *object, const char *subject)
 {
     const Py_hash_t result = PyObject_Hash(object);
     if (result == -1) {
         PyErr_Clear();
-        throw SymEngineException(std::string{"PyFunction "} + subject
+        throw SymEngineException(std::string{subject}
                                  + " hash raised an exception");
     }
     return static_cast<hash_t>(result);
+}
+
+PyObject *checked_new_reference(PyObject *result, const std::string &subject,
+                                const char *operation)
+{
+    if (result == nullptr || PyErr_Occurred() != nullptr) {
+        Py_XDECREF(result);
+        python_callback_failed(subject, operation);
+    }
+    return result;
+}
+
+PyObject *checked_to_python(const RCP<const PyModule> &module,
+                            const RCP<const Basic> &value,
+                            const char *operation)
+{
+    if (module.is_null())
+        throw SymEngineException("PyNumber has no conversion module");
+    return checked_new_reference(module->to_py_(value), "PyNumber",
+                                 operation);
+}
+
+RCP<const Number>
+checked_number_result(PyObject *result, const RCP<const PyModule> &module,
+                      const char *operation)
+{
+    result = checked_new_reference(result, "PyNumber", operation);
+    return make_rcp<PyNumber>(result, module);
+}
+
+PyObject *checked_initial_py_number(PyObject *object)
+{
+    if (object == nullptr)
+        python_callback_failed("PyNumber", "construction");
+    return object;
+}
+
+std::string
+checked_py_number_subtype_key(const RCP<const PyModule> &pymodule)
+{
+    if (pymodule.is_null())
+        throw SymEngineException("PyNumber requires a conversion module");
+    const std::string &key = pymodule->get_number_subtype_key();
+    const std::size_t prefix_size
+        = std::char_traits<char>::length(kPyNumberSubtypePrefix);
+    if (key.size() <= prefix_size
+        || key.compare(0, prefix_size, kPyNumberSubtypePrefix) != 0) {
+        throw SymEngineException(
+            "PyModule PyNumber subtype key is not ownership-qualified");
+    }
+    return key;
 }
 
 void python_runtime_shutdown()
@@ -81,10 +202,28 @@ void initialize_python_cooperative_intrusive()
     (void)initialized;
 }
 
+bool is_a_PyNumber(const Basic &value) noexcept
+{
+    if (!is_a<NumberWrapper>(value))
+        return false;
+#if HAVE_SYMENGINE_RTTI
+    return is_a_number_wrapper<PyNumber>(value);
+#else
+    const auto &wrapper = down_cast<const NumberWrapper &>(value);
+    const std::string &key = wrapper.get_subtype_key();
+    const std::size_t prefix_size
+        = std::char_traits<char>::length(kPyNumberSubtypePrefix);
+    return key.size() > prefix_size
+           && key.compare(0, prefix_size, kPyNumberSubtypePrefix) == 0;
+#endif
+}
+
 // PyModule
-PyModule::PyModule(PyObject* (*to_py)(const RCP<const Basic>), RCP<const Basic> (*from_py)(PyObject*),
+PyModule::PyModule(std::string number_subtype_key,
+                   PyObject* (*to_py)(const RCP<const Basic>), RCP<const Basic> (*from_py)(PyObject*),
                    RCP<const Number> (*eval)(PyObject*, long), RCP<const Basic> (*diff)(PyObject*, RCP<const Basic>)) :
-        to_py_(to_py), from_py_(from_py), eval_(eval), diff_(diff) {
+        number_subtype_key_(std::move(number_subtype_key)), to_py_(to_py),
+        from_py_(from_py), eval_(eval), diff_(diff) {
     zero = PyInt_FromLong(0);
     one = PyInt_FromLong(1);
     minus_one = PyInt_FromLong(-1);
@@ -98,44 +237,52 @@ PyModule::~PyModule(){
 
 // PyNumber
 PyNumber::PyNumber(PyObject* pyobject, const RCP<const PyModule> &pymodule) :
-        pyobject_(pyobject), pymodule_(pymodule) {
+        NumberWrapper(checked_py_number_subtype_key(pymodule)),
+        pyobject_(checked_initial_py_number(pyobject)),
+        pymodule_(pymodule) {
 }
 
 hash_t PyNumber::__hash__() const {
-    return PyObject_Hash(pyobject_);
+    return checked_python_hash(pyobject_, "PyNumber");
 }
 
-bool PyNumber::__eq__(const Basic &o) const {
-    return is_a<PyNumber>(o) and
-        PyObject_RichCompareBool(pyobject_, static_cast<const PyNumber &>(o).get_py_object(), Py_EQ) == 1;
+bool PyNumber::value_eq(const NumberWrapper &other) const {
+    return checked_symmetric_equality(
+        pyobject_, checked_py_number(other).get_py_object(), "PyNumber");
 }
 
-int PyNumber::compare(const Basic &o) const {
-    SYMENGINE_ASSERT(is_a<PyNumber>(o))
-    PyObject* o1 = static_cast<const PyNumber &>(o).get_py_object();
-    if (PyObject_RichCompareBool(pyobject_, o1, Py_EQ) == 1)
-        return 0;
-    return PyObject_RichCompareBool(pyobject_, o1, Py_LT) == 1 ? -1 : 1;
+int PyNumber::value_compare(const NumberWrapper &other) const {
+    PyObject* o1 = checked_py_number(other).get_py_object();
+    return checked_strict_order(pyobject_, o1, "PyNumber");
 }
 
 bool PyNumber::is_zero() const {
-    return PyObject_RichCompareBool(pyobject_, pymodule_->get_zero(), Py_EQ) == 1;
+    return checked_symmetric_equality(pyobject_, pymodule_->get_zero(),
+                                      "PyNumber zero predicate");
 }
 //! \return true if `1`
 bool PyNumber::is_one() const {
-    return PyObject_RichCompareBool(pyobject_, pymodule_->get_one(), Py_EQ) == 1;
+    return checked_symmetric_equality(pyobject_, pymodule_->get_one(),
+                                      "PyNumber one predicate");
 }
 //! \return true if `-1`
 bool PyNumber::is_minus_one() const {
-    return PyObject_RichCompareBool(pyobject_, pymodule_->get_minus_one(), Py_EQ) == 1;
+    return checked_symmetric_equality(pyobject_, pymodule_->get_minus_one(),
+                                      "PyNumber minus-one predicate");
 }
 //! \return true if negative
 bool PyNumber::is_negative() const {
-    return PyObject_RichCompareBool(pyobject_, pymodule_->get_zero(), Py_LT) == 1;
+    if (is_zero())
+        return false;
+    return checked_strict_order(pyobject_, pymodule_->get_zero(),
+                                "PyNumber sign predicate") < 0;
 }
 //! \return true if positive
 bool PyNumber::is_positive() const {
-    return PyObject_RichCompareBool(pyobject_, pymodule_->get_zero(), Py_GT) == 1;
+    if (is_zero())
+        return false;
+    return checked_strict_order(pyobject_, pymodule_->get_zero(),
+                                "PyNumber sign predicate") > 0;
 }
 //! \return true if complex
 bool PyNumber::is_complex() const {
@@ -145,115 +292,131 @@ bool PyNumber::is_complex() const {
 //! Addition
 RCP<const Number> PyNumber::add(const Number &other) const {
     PyObject *other_p, *result;
-    if (is_a<PyNumber>(other)) {
-        other_p = static_cast<const PyNumber &>(other).pyobject_;
+    if (const PyNumber *py_number = same_py_number(*this, other)) {
+        other_p = py_number->pyobject_;
         result = PyNumber_Add(pyobject_, other_p);
     } else {
-        other_p = pymodule_->to_py_(other.rcp_from_this_cast<const Basic>());
+        other_p = checked_to_python(
+            pymodule_, other.rcp_from_this_cast<const Basic>(), "conversion");
         result = PyNumber_Add(pyobject_, other_p);
-        Py_XDECREF(other_p);
+        Py_DECREF(other_p);
     }
-    return make_rcp<PyNumber>(result, pymodule_);
+    return checked_number_result(result, pymodule_, "addition");
 }
 //! Subtraction
 RCP<const Number> PyNumber::sub(const Number &other) const {
     PyObject *other_p, *result;
-    if (is_a<PyNumber>(other)) {
-        other_p = static_cast<const PyNumber &>(other).pyobject_;
+    if (const PyNumber *py_number = same_py_number(*this, other)) {
+        other_p = py_number->pyobject_;
         result = PyNumber_Subtract(pyobject_, other_p);
     } else {
-        other_p = pymodule_->to_py_(other.rcp_from_this_cast<const Basic>());
+        other_p = checked_to_python(
+            pymodule_, other.rcp_from_this_cast<const Basic>(), "conversion");
         result = PyNumber_Subtract(pyobject_, other_p);
-        Py_XDECREF(other_p);
+        Py_DECREF(other_p);
     }
-    return make_rcp<PyNumber>(result, pymodule_);
+    return checked_number_result(result, pymodule_, "subtraction");
 }
 RCP<const Number> PyNumber::rsub(const Number &other) const {
     PyObject *other_p, *result;
-    if (is_a<PyNumber>(other)) {
-        other_p = static_cast<const PyNumber &>(other).pyobject_;
+    if (const PyNumber *py_number = same_py_number(*this, other)) {
+        other_p = py_number->pyobject_;
         result = PyNumber_Subtract(other_p, pyobject_);
     } else {
-        other_p = pymodule_->to_py_(other.rcp_from_this_cast<const Basic>());
+        other_p = checked_to_python(
+            pymodule_, other.rcp_from_this_cast<const Basic>(), "conversion");
         result = PyNumber_Subtract(other_p, pyobject_);
-        Py_XDECREF(other_p);
+        Py_DECREF(other_p);
     }
-    return make_rcp<PyNumber>(result, pymodule_);
+    return checked_number_result(result, pymodule_, "reverse subtraction");
 }
 //! Multiplication
 RCP<const Number> PyNumber::mul(const Number &other) const {
     PyObject *other_p, *result;
-    if (is_a<PyNumber>(other)) {
-        other_p = static_cast<const PyNumber &>(other).pyobject_;
+    if (const PyNumber *py_number = same_py_number(*this, other)) {
+        other_p = py_number->pyobject_;
         result = PyNumber_Multiply(pyobject_, other_p);
     } else {
-        other_p = pymodule_->to_py_(other.rcp_from_this_cast<const Basic>());
+        other_p = checked_to_python(
+            pymodule_, other.rcp_from_this_cast<const Basic>(), "conversion");
         result = PyNumber_Multiply(pyobject_, other_p);
-        Py_XDECREF(other_p);
+        Py_DECREF(other_p);
     }
-    return make_rcp<PyNumber>(result, pymodule_);
+    return checked_number_result(result, pymodule_, "multiplication");
 }
 //! Division
 RCP<const Number> PyNumber::div(const Number &other) const {
     PyObject *other_p, *result;
-    if (is_a<PyNumber>(other)) {
-        other_p = static_cast<const PyNumber &>(other).pyobject_;
+    if (const PyNumber *py_number = same_py_number(*this, other)) {
+        other_p = py_number->pyobject_;
         result = PyNumber_Divide(pyobject_, other_p);
     } else {
-        other_p = pymodule_->to_py_(other.rcp_from_this_cast<const Basic>());
+        other_p = checked_to_python(
+            pymodule_, other.rcp_from_this_cast<const Basic>(), "conversion");
         result = PyNumber_Divide(pyobject_, other_p);
-        Py_XDECREF(other_p);
+        Py_DECREF(other_p);
     }
-    return make_rcp<PyNumber>(result, pymodule_);
+    return checked_number_result(result, pymodule_, "division");
 }
 RCP<const Number> PyNumber::rdiv(const Number &other) const {
     PyObject *other_p, *result;
-    if (is_a<PyNumber>(other)) {
-        other_p = static_cast<const PyNumber &>(other).pyobject_;
-        result = PyNumber_Divide(pyobject_, other_p);
+    if (const PyNumber *py_number = same_py_number(*this, other)) {
+        other_p = py_number->pyobject_;
+        result = PyNumber_Divide(other_p, pyobject_);
     } else {
-        other_p = pymodule_->to_py_(other.rcp_from_this_cast<const Basic>());
-        result = PyNumber_Divide(pyobject_, other_p);
-        Py_XDECREF(other_p);
+        other_p = checked_to_python(
+            pymodule_, other.rcp_from_this_cast<const Basic>(), "conversion");
+        result = PyNumber_Divide(other_p, pyobject_);
+        Py_DECREF(other_p);
     }
-    return make_rcp<PyNumber>(result, pymodule_);
+    return checked_number_result(result, pymodule_, "reverse division");
 }
 //! Power
 RCP<const Number> PyNumber::pow(const Number &other) const {
     PyObject *other_p, *result;
-    if (is_a<PyNumber>(other)) {
-        other_p = static_cast<const PyNumber &>(other).pyobject_;
+    if (const PyNumber *py_number = same_py_number(*this, other)) {
+        other_p = py_number->pyobject_;
         result = PyNumber_Power(pyobject_, other_p, Py_None);
     } else {
-        other_p = pymodule_->to_py_(other.rcp_from_this_cast<const Basic>());
+        other_p = checked_to_python(
+            pymodule_, other.rcp_from_this_cast<const Basic>(), "conversion");
         result = PyNumber_Power(pyobject_, other_p, Py_None);
-        Py_XDECREF(other_p);
+        Py_DECREF(other_p);
     }
-    return make_rcp<PyNumber>(result, pymodule_);
+    return checked_number_result(result, pymodule_, "power");
 }
 RCP<const Number> PyNumber::rpow(const Number &other) const {
     PyObject *other_p, *result;
-    if (is_a<PyNumber>(other)) {
-        other_p = static_cast<const PyNumber &>(other).pyobject_;
+    if (const PyNumber *py_number = same_py_number(*this, other)) {
+        other_p = py_number->pyobject_;
         result = PyNumber_Power(other_p, pyobject_, Py_None);
     } else {
-        other_p = pymodule_->to_py_(other.rcp_from_this_cast<const Basic>());
+        other_p = checked_to_python(
+            pymodule_, other.rcp_from_this_cast<const Basic>(), "conversion");
         result = PyNumber_Power(other_p, pyobject_, Py_None);
-        Py_XDECREF(other_p);
+        Py_DECREF(other_p);
     }
-    return make_rcp<PyNumber>(result, pymodule_);
+    return checked_number_result(result, pymodule_, "reverse power");
 }
 
 RCP<const Number> PyNumber::eval(long bits) const {
-    return pymodule_->eval_(pyobject_, bits);
+    const RCP<const Number> result = pymodule_->eval_(pyobject_, bits);
+    if (result.is_null() || PyErr_Occurred() != nullptr)
+        python_callback_failed("PyNumber", "numeric conversion");
+    return result;
 }
 
 std::string PyNumber::__str__() const {
     Py_ssize_t size;
-    PyObject *pystr = PyObject_Str(pyobject_);
+    PyObject *pystr
+        = checked_new_reference(PyObject_Str(pyobject_), "PyNumber", "string");
     const char* data = PyUnicode_AsUTF8AndSize(pystr, &size);
+    if (data == nullptr || PyErr_Occurred() != nullptr) {
+        Py_DECREF(pystr);
+        python_callback_failed("PyNumber", "UTF-8 string conversion");
+    }
     std::string result = std::string(data, size);
-    Py_XDECREF(pystr);
+    Py_DECREF(pystr);
     return result;
 }
 
@@ -339,7 +502,7 @@ RCP<const Basic> PyFunction::diff_impl(const RCP<const Symbol> &s) const {
 hash_t PyFunction::__hash__() const {
     // Python's application hash follows the callable-and-arguments equality
     // refined below; the stable subtype key is constant throughout this domain.
-    return checked_python_hash(pyobject_, "application");
+    return checked_python_hash(pyobject_, "PyFunction application");
 }
 
 bool PyFunction::__eq__(const Basic &o) const {

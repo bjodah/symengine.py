@@ -212,6 +212,8 @@ public:
 //! Class to store the Python objects and Cython callback functions specific
 //  to a Python module. eg: SymPy or Sage
 class PyModule : public EnableRCPFromThis<PyModule> {
+private:
+    const std::string number_subtype_key_;
 public:
     // Callback function to convert a SymEngine object to Python
     PyObject* (*to_py_)(const RCP<const Basic>);
@@ -226,12 +228,23 @@ public:
     // Common constants in Python
     PyObject *one, *zero, *minus_one;
 public:
-    PyModule(PyObject* (*)(const RCP<const Basic> x), RCP<const Basic> (*)(PyObject*),
-             RCP<const Number> (*)(PyObject*, long), RCP<const Basic> (*)(PyObject*, RCP<const Basic>));
+    /*! Construct callbacks for one ownership-qualified PyNumber domain.
+     *  Keys below `org.symengine.python.PyNumber/` are reserved exclusively
+     *  for this concrete wrapper, making exact dispatch safe without RTTI. */
+    PyModule(std::string number_subtype_key,
+             PyObject* (*)(const RCP<const Basic> x),
+             RCP<const Basic> (*)(PyObject*),
+             RCP<const Number> (*)(PyObject*, long),
+             RCP<const Basic> (*)(PyObject*, RCP<const Basic>));
     ~PyModule();
     PyObject* get_zero() const { return zero; }
     PyObject* get_one() const { return one; }
     PyObject* get_minus_one() const { return minus_one; }
+    //! Stable semantic identity inherited by every number using this module.
+    const std::string &get_number_subtype_key() const noexcept
+    {
+        return number_subtype_key_;
+    }
 };
 
 //! Python numeric types that do not have direct counterparts in SymEngine are
@@ -245,7 +258,13 @@ private:
     PyObject* pyobject_;
     //! Python module that this object belongs to
     RCP<const PyModule> pymodule_;
+protected:
+    bool value_eq(const NumberWrapper &other) const override;
+    int value_compare(const NumberWrapper &other) const override;
 public:
+    /*! Python-backed numbers use a module-qualified stable subtype domain.
+     *  Their hash retains the raw Python callback result rather than mixing
+     *  in that key. Callback failures and non-total value orders raise. */
     PyNumber(PyObject* pyobject, const RCP<const PyModule> &pymodule);
     ~PyNumber() {
         Py_DECREF(pyobject_);
@@ -284,10 +303,12 @@ public:
 
     virtual RCP<const Number> eval(long bits) const;
     virtual std::string __str__() const;
-    virtual int compare(const Basic &o) const;
-    virtual bool __eq__(const Basic &o) const;
     virtual hash_t __hash__() const;
 };
+
+/*! Recognize this concrete wrapper, not the shared NumberWrapper TypeID.
+ *  No-RTTI builds rely on PyModule's exclusively owned key namespace. */
+bool is_a_PyNumber(const Basic &value) noexcept;
 
 /*! Class to represent the parent class for a PyFunction. Stores
  *  a python reference `pyobject_` to a python callable object.

@@ -6,6 +6,9 @@ from cpython.ref cimport PyObject
 from libcpp.pair cimport pair
 from libcpp.set cimport set
 from libcpp.unordered_map cimport unordered_map
+from libc.stdint cimport uint64_t
+
+ctypedef uint64_t hash_t
 
 cdef extern from "<set>" namespace "std":
     # Cython's libcpp.set does not support multiset in 0.29.x
@@ -143,7 +146,7 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
 
     cdef cppclass Basic:
         string __str__() except + nogil
-        unsigned int hash() except + nogil
+        hash_t hash() except + nogil
         vec_basic get_args() nogil
         int __cmp__(const Basic &o) nogil
         void* self_external() noexcept
@@ -216,27 +219,28 @@ cdef extern from "<symengine/symbol.h>" namespace "SymEngine":
 
 cdef extern from "<symengine/number.h>" namespace "SymEngine":
     cdef cppclass Number(Basic):
-        bool is_positive() nogil
-        bool is_negative() nogil
-        bool is_zero() nogil
-        bool is_one() nogil
-        bool is_minus_one() nogil
-        bool is_complex() nogil
+        bool is_positive() except + nogil
+        bool is_negative() except + nogil
+        bool is_zero() except + nogil
+        bool is_one() except + nogil
+        bool is_minus_one() except + nogil
+        bool is_complex() except + nogil
         pass
     cdef cppclass NumberWrapper(Basic):
         pass
-    cdef tribool is_zero(const Basic &x) nogil
-    cdef tribool is_positive(const Basic &x) nogil
-    cdef tribool is_negative(const Basic &x) nogil
-    cdef tribool is_nonnegative(const Basic &x) nogil
-    cdef tribool is_nonpositive(const Basic &x) nogil
-    cdef tribool is_real(const Basic &x) nogil
+    cdef tribool is_zero(const Basic &x) except + nogil
+    cdef tribool is_positive(const Basic &x) except + nogil
+    cdef tribool is_negative(const Basic &x) except + nogil
+    cdef tribool is_nonnegative(const Basic &x) except + nogil
+    cdef tribool is_nonpositive(const Basic &x) except + nogil
+    cdef tribool is_real(const Basic &x) except + nogil
 
 cdef extern from "pywrapper.h" namespace "SymEngine":
     cdef cppclass PyNumber(NumberWrapper):
         PyObject* get_py_object()
     cdef cppclass PyModule:
         pass
+    bool is_a_PyNumber(const Basic&) noexcept nogil
     cdef cppclass PyFunctionClass:
         PyObject* call(const vec_basic &vec)
     cdef cppclass PyFunction:
@@ -365,10 +369,10 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
     rcp_const_basic make_rcp_Derivative "SymEngine::make_rcp<const SymEngine::Derivative>"(rcp_const_basic arg, const multiset_basic &x) nogil
     rcp_const_basic make_rcp_RealDouble "SymEngine::make_rcp<const SymEngine::RealDouble>"(double x) nogil
     rcp_const_basic make_rcp_ComplexDouble "SymEngine::make_rcp<const SymEngine::ComplexDouble>"(double complex x) nogil
-    RCP[const PyModule] make_rcp_PyModule "SymEngine::make_rcp<const SymEngine::PyModule>"(PyObject* (*) (rcp_const_basic x) except +, \
+    RCP[const PyModule] make_rcp_PyModule "SymEngine::make_rcp<const SymEngine::PyModule>"(string, PyObject* (*) (rcp_const_basic x) except +, \
             rcp_const_basic (*)(PyObject*) except +, RCP[const Number] (*)(PyObject*, long bits) except +,
             rcp_const_basic (*)(PyObject*, rcp_const_basic) except +) except +
-    rcp_const_basic make_rcp_PyNumber "SymEngine::make_rcp<const SymEngine::PyNumber>"(PyObject*, RCP[const PyModule] x) nogil
+    rcp_const_basic make_rcp_PyNumber "SymEngine::make_rcp<const SymEngine::PyNumber>"(PyObject*, RCP[const PyModule] x) except + nogil
     RCP[const PyFunctionClass] make_rcp_PyFunctionClass "SymEngine::make_rcp<const SymEngine::PyFunctionClass>"(PyObject* pyobject,
             string name, RCP[const PyModule] pymodule) nogil
     rcp_const_basic make_rcp_PyFunction "SymEngine::make_rcp<const SymEngine::PyFunction>" (const vec_basic &vec,

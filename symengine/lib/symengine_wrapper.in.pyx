@@ -37,6 +37,8 @@ except ImportError:
 class SympifyError(Exception):
     pass
 
+cdef object _pynumber_c2py_token = object()
+
 cpdef object capsule_to_basic(object capsule):
     cdef CRCPBasic *p = <CRCPBasic*>PyCapsule_GetPointer(capsule, NULL)
     return c2py(p.m)
@@ -230,8 +232,8 @@ cdef object c2py(rcp_const_basic o):
         r = Function.__new__(ceiling)
     elif (symengine.is_a[symengine.Conjugate](deref(o))):
         r = Function.__new__(conjugate)
-    elif (symengine.is_a[symengine.PyNumber](deref(o))):
-        r = PyNumber.__new__(PyNumber)
+    elif (symengine.is_a_PyNumber(deref(o))):
+        r = PyNumber.__new__(PyNumber, _pynumber_c2py_token)
     elif (symengine.is_a[symengine.Piecewise](deref(o))):
         r = Function.__new__(Piecewise)
     elif (symengine.is_a[symengine.Contains](deref(o))):
@@ -2926,25 +2928,57 @@ cdef rcp_const_basic sympy_diff(PyObject* o1, rcp_const_basic symbol):
 
 def create_sympy_module():
     cdef PyModule s = PyModule.__new__(PyModule)
-    s.thisptr = symengine.make_rcp_PyModule(&symengine_to_sympy, &pynumber_to_symengine, &sympy_eval,
+    s.thisptr = symengine.make_rcp_PyModule(
+                                    b"org.symengine.python.PyNumber/sympy",
+                                    &symengine_to_sympy, &pynumber_to_symengine, &sympy_eval,
                                     &sympy_diff)
     return s
 
 def create_sage_module():
     cdef PyModule s = PyModule.__new__(PyModule)
-    s.thisptr = symengine.make_rcp_PyModule(&symengine_to_sage, &pynumber_to_symengine, &sage_eval,
+    s.thisptr = symengine.make_rcp_PyModule(
+                                    b"org.symengine.python.PyNumber/sage",
+                                    &symengine_to_sage, &pynumber_to_symengine, &sage_eval,
                                     &sage_diff)
     return s
+
+def _test_pymodule_number_subtype_key(bytes number_subtype_key):
+    cdef PyModule s = PyModule.__new__(PyModule)
+    s.thisptr = symengine.make_rcp_PyModule(
+                                    number_subtype_key,
+                                    &symengine_to_sympy, &pynumber_to_symengine,
+                                    &sympy_eval, &sympy_diff)
+    # Exercise the PyNumber constructor boundary, where key ownership is
+    # validated, rather than merely constructing an inert callback table.
+    PyNumber(0, s)
 
 sympy_module = create_sympy_module()
 sage_module = create_sage_module()
 
 cdef class PyNumber(Number):
     def __cinit__(self, obj = None, PyModule module = None):
-        if obj is None:
+        cdef PyObject* owned
+        # Only c2py can name this private token. It installs the already-owned
+        # C++ pointer before the otherwise-empty shell can escape.
+        if obj is _pynumber_c2py_token:
             return
-        Py_XINCREF(<PyObject*>(obj))
-        self.thisptr = symengine.make_rcp_PyNumber(<PyObject*>(obj), module.thisptr)
+        if obj is None:
+            raise TypeError("PyNumber requires a non-None Python value")
+        if module is None:
+            raise TypeError("PyNumber requires a non-None conversion module")
+        owned = <PyObject*>(obj)
+        Py_XINCREF(owned)
+        try:
+            self.thisptr = symengine.make_rcp_PyNumber(owned, module.thisptr)
+        except:
+            Py_XDECREF(owned)
+            raise
+
+    def __init__(self, obj = None, module = None):
+        if obj is None:
+            raise TypeError("PyNumber requires a non-None Python value")
+        if module is None:
+            raise TypeError("PyNumber requires a non-None conversion module")
 
     def _sympy_(self):
         import sympy
@@ -2959,6 +2993,10 @@ cdef class PyNumber(Number):
 
     def pyobject(self):
         return <object>deref(symengine.rcp_static_cast_PyNumber(self.thisptr.as_rcp())).get_py_object()
+
+
+def _is_exact_pynumber(Basic value):
+    return symengine.is_a_PyNumber(deref(value.thisptr.get()))
 
 
 class PyFunction(FunctionSymbol):
