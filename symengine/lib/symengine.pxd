@@ -430,6 +430,10 @@ cdef extern from "<symengine/functions.h>" namespace "SymEngine":
     cdef rcp_const_basic conjugate(rcp_const_basic &x) except + nogil
     cdef rcp_const_basic log(rcp_const_basic &x) except + nogil
     cdef rcp_const_basic log(rcp_const_basic &x, rcp_const_basic &y) except + nogil
+    cdef rcp_const_basic log1p(rcp_const_basic &arg) except + nogil
+    cdef rcp_const_basic expm1(rcp_const_basic &arg) except + nogil
+    cdef rcp_const_basic hypot(rcp_const_basic &x, rcp_const_basic &y) except + nogil
+    cdef rcp_const_basic fma(rcp_const_basic &a, rcp_const_basic &b, rcp_const_basic &c) except + nogil
     cdef rcp_const_basic unevaluated_expr(rcp_const_basic &x) except + nogil
 
     cdef cppclass Function(Basic):
@@ -600,6 +604,18 @@ cdef extern from "<symengine/functions.h>" namespace "SymEngine":
         pass
 
     cdef cppclass Log(Function):
+        pass
+
+    cdef cppclass Log1p(OneArgFunction):
+        pass
+
+    cdef cppclass Expm1(OneArgFunction):
+        pass
+
+    cdef cppclass Hypot(Function):
+        pass
+
+    cdef cppclass Fma(Function):
         pass
 
 cdef extern from "<symengine/real_mpfr.h>":

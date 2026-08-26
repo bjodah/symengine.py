@@ -232,6 +232,14 @@ cdef object c2py(rcp_const_basic o):
         r = Function.__new__(ceiling)
     elif (symengine.is_a[symengine.Conjugate](deref(o))):
         r = Function.__new__(conjugate)
+    elif (symengine.is_a[symengine.Log1p](deref(o))):
+        r = Function.__new__(log1p)
+    elif (symengine.is_a[symengine.Expm1](deref(o))):
+        r = Function.__new__(expm1)
+    elif (symengine.is_a[symengine.Hypot](deref(o))):
+        r = Function.__new__(hypot)
+    elif (symengine.is_a[symengine.Fma](deref(o))):
+        r = Function.__new__(fma)
     elif (symengine.is_a_PyNumber(deref(o))):
         r = PyNumber.__new__(PyNumber, _pynumber_c2py_token)
     elif (symengine.is_a[symengine.Piecewise](deref(o))):
@@ -274,6 +282,31 @@ cdef object c2py(rcp_const_basic o):
         raise Exception("Unsupported SymEngine class.")
     r.thisptr = o
     return r
+
+# The heads of `sympy.codegen.cfunctions` that SymEngine has a dedicated class
+# for, keyed by the exact argument count SymEngine's factory accepts.  SymPy
+# spells them in a submodule rather than the top-level namespace, so they are
+# matched by module+name instead of `isinstance` against a `sympy.*` attribute
+# (which would make `sympy2symengine` depend on a submodule import on every
+# call, and would break on SymPy versions that lack one of them).
+_SYMPY_CFUNCTION_HEADS = {"log1p": 1, "expm1": 1, "hypot": 2, "fma": 3}
+
+
+def _sympy_cfunction_head(a):
+    """Return the ``sympy.codegen.cfunctions`` head name of ``a``, else None.
+
+    Returns None for anything whose arity SymEngine's factory would reject, so
+    such an expression falls through to the generic ``PyFunction`` wrapping
+    rather than raising.
+    """
+    cls = type(a)
+    if cls.__module__ != "sympy.codegen.cfunctions":
+        return None
+    nargs = _SYMPY_CFUNCTION_HEADS.get(cls.__name__)
+    if nargs is None or len(a.args) != nargs:
+        return None
+    return cls.__name__
+
 
 def sympy2symengine(a, raise_error=False):
     """
@@ -480,6 +513,16 @@ def sympy2symengine(a, raise_error=False):
         return set_complement(*(a.args))
     elif isinstance(a, sympy.ImageSet):
         return imageset(*(a.args))
+    elif _sympy_cfunction_head(a) is not None:
+        head = _sympy_cfunction_head(a)
+        if head == "log1p":
+            return log1p(a.args[0])
+        elif head == "expm1":
+            return expm1(a.args[0])
+        elif head == "hypot":
+            return hypot(*a.args)
+        else:
+            return fma(*a.args)
     elif isinstance(a, sympy.Function):
         return PyFunction(a, a.args, a.func, sympy_module)
     elif isinstance(a, sympy.UnevaluatedExpr):
@@ -2644,6 +2687,75 @@ class log(OneArgFunction):
             return c2py(symengine.log(X.thisptr.as_rcp()))
         cdef Basic Y = sympify(y)
         return c2py(symengine.log(X.thisptr.as_rcp(), Y.thisptr.as_rcp()))
+
+# The four numerical intrinsic heads below (`log1p`, `expm1`, `hypot`, `fma`)
+# are retained unevaluated by SymEngine even for numeric arguments -- e.g.
+# `hypot(3, 4)` is a `Hypot` node and not `5` -- because the head is what a
+# code generator lowers to the corresponding C99/IEEE-754 operation.  Their
+# SymPy counterparts live in `sympy.codegen.cfunctions`, not in the top-level
+# `sympy` namespace, so `_sympy_` cannot use `OneArgFunction`'s generic
+# `getattr(sympy, ...)` lookup.  Sage has no counterpart for any of them.
+class log1p(OneArgFunction):
+    """log(1 + x), retained as a head rather than expanded."""
+
+    def __new__(cls, x):
+        cdef Basic X = sympify(x)
+        return c2py(symengine.log1p(X.thisptr.as_rcp()))
+
+    def _sympy_(self):
+        from sympy.codegen.cfunctions import log1p as sympy_log1p
+        return sympy_log1p(self.get_arg()._sympy_())
+
+    def _sage_(self):
+        raise NotImplementedError("Sage has no log1p counterpart")
+
+class expm1(OneArgFunction):
+    """exp(x) - 1, retained as a head rather than expanded."""
+
+    def __new__(cls, x):
+        cdef Basic X = sympify(x)
+        return c2py(symengine.expm1(X.thisptr.as_rcp()))
+
+    def _sympy_(self):
+        from sympy.codegen.cfunctions import expm1 as sympy_expm1
+        return sympy_expm1(self.get_arg()._sympy_())
+
+    def _sage_(self):
+        raise NotImplementedError("Sage has no expm1 counterpart")
+
+class hypot(Function):
+    """sqrt(x*x + y*y).  SymEngine sorts the two arguments canonically, so
+    ``hypot(x, y)`` and ``hypot(y, x)`` are the same object."""
+
+    def __new__(cls, x, y):
+        cdef Basic X = sympify(x)
+        cdef Basic Y = sympify(y)
+        return c2py(symengine.hypot(X.thisptr.as_rcp(), Y.thisptr.as_rcp()))
+
+    def _sympy_(self):
+        from sympy.codegen.cfunctions import hypot as sympy_hypot
+        return sympy_hypot(*self.args_as_sympy())
+
+    def _sage_(self):
+        raise NotImplementedError("Sage has no hypot counterpart")
+
+class fma(Function):
+    """The fused multiply-add ``a*b + c``.  Argument order is never rewritten:
+    the head pins one rounding on the target."""
+
+    def __new__(cls, a, b, c):
+        cdef Basic A = sympify(a)
+        cdef Basic B = sympify(b)
+        cdef Basic C = sympify(c)
+        return c2py(symengine.fma(A.thisptr.as_rcp(), B.thisptr.as_rcp(),
+                                  C.thisptr.as_rcp()))
+
+    def _sympy_(self):
+        from sympy.codegen.cfunctions import fma as sympy_fma
+        return sympy_fma(*self.args_as_sympy())
+
+    def _sage_(self):
+        raise NotImplementedError("Sage has no fma counterpart")
 
 class sin(TrigFunction):
     def __new__(cls, x):

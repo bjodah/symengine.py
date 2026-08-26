@@ -70,6 +70,34 @@ def test_Lambdify():
     assert allclose(L(range(n, n+len(args))),
                     [3*n+3, n**2, -1/(n+2), n*(n+1)*(n+2)])
 
+def _test_Lambdify_numerical_intrinsics(Lambdify):
+    """The whole point of the log1p/expm1/hypot/fma heads is that they survive
+    to evaluation, so pin that they lower to the C99 primitives rather than to
+    log(1+x)/exp(x)-1/sqrt(x*x+y*y)/x*y+z.  Near zero the two differ well
+    outside any tolerance a rewritten form could hide behind."""
+    x, y, z = se.symbols('x y z')
+    f = Lambdify([x, y, z],
+                 [se.log1p(x), se.expm1(x), se.hypot(x, y), se.fma(x, y, z)])
+    tiny = 1e-9
+    got = list(f([tiny, 3.0, 4.0]))
+    expected = [math.log1p(tiny), math.expm1(tiny), math.hypot(tiny, 3.0),
+                tiny * 3.0 + 4.0]
+    assert allclose(got, expected, rtol=1e-15, atol=0)
+    # The naive forms lose the low-order bits that log1p/expm1 keep, so a
+    # rewritten lowering would fail the comparison above.
+    assert math.log(1.0 + tiny) != math.log1p(tiny)
+    assert math.exp(tiny) - 1.0 != math.expm1(tiny)
+
+
+@unittest.skipUnless(have_numpy, "Numpy not installed")
+def test_Lambdify_numerical_intrinsics():
+    _test_Lambdify_numerical_intrinsics(
+        lambda *args: se.Lambdify(*args, backend='lambda'))
+    if se.have_llvm:
+        _test_Lambdify_numerical_intrinsics(
+            lambda *args: se.Lambdify(*args, backend='llvm'))
+
+
 @unittest.skipUnless(have_numpy, "Numpy not installed")
 def test_Lambdify_with_opt_level():
     args = x, y, z = se.symbols('x y z')

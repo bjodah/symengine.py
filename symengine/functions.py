@@ -7,4 +7,5 @@ from .lib.symengine_wrapper import (sin, cos, tan, cot, csc, sec,
     KroneckerDelta, LeviCivita, erf, erfc,
     lowergamma, uppergamma, loggamma, beta,
     polygamma, sign, floor, ceiling, 
-    conjugate, digamma, trigamma)
+    conjugate, digamma, trigamma,
+    log1p, expm1, hypot, fma)

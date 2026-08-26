@@ -3,7 +3,8 @@ from symengine import (
     Rational, EulerGamma, Function, Subs, Derivative, LambertW, zeta, dirichlet_eta,
     zoo, pi, KroneckerDelta, LeviCivita, erf, erfc, oo, lowergamma, uppergamma, exp,
     loggamma, beta, polygamma, digamma, trigamma, sign, floor, ceiling, conjugate,
-    nan, Float, UnevaluatedExpr, FiniteSet, DictBasic, sympify
+    nan, Float, UnevaluatedExpr, FiniteSet, DictBasic, sympify,
+    log1p, expm1, hypot, fma
 )
 from symengine.test_utilities import raises
 
@@ -710,3 +711,147 @@ def test_unevaluated_expr():
     assert t.is_number
     assert t.is_integer
     assert t.is_finite
+
+
+# ---------------------------------------------------------------------------
+# Numerical intrinsic heads (log1p, expm1, hypot, fma)
+#
+# These four are deliberately *not* folded for inexact numeric arguments: the
+# head is what a code generator lowers to the corresponding C99 operation, so
+# folding it away would discard the operation being selected.  The tests below
+# pin that policy as well as the ordinary wrapper surface.
+# ---------------------------------------------------------------------------
+
+def test_log1p():
+    x = Symbol("x")
+    y = Symbol("y")
+    e = log1p(x)
+    assert str(e) == "log1p(x)"
+    assert e == log1p(x)
+    assert e != log(x + 1)
+    assert e.func(y) == log1p(y)
+    assert e.args == (x,)
+    assert e.free_symbols == {x}
+    assert e.subs(x, y) == log1p(y)
+    assert e.diff(x) == 1 / (x + 1)
+    # exact zero folds, inexact zero does not (the sign of -0.0 must survive)
+    assert log1p(Integer(0)) == 0
+    assert log1p(Float(0.0)) == log1p(Float(0.0))
+    assert log1p(Float(0.0)) != 0
+    # no folding of an inexact argument either
+    assert log1p(Float(0.5)) == log1p(Float(0.5))
+    assert abs(float(log1p(Float(0.5)).n(53, real=True)) - 0.4054651081081644) < 1e-15
+
+
+def test_expm1():
+    x = Symbol("x")
+    y = Symbol("y")
+    e = expm1(x)
+    assert str(e) == "expm1(x)"
+    assert e == expm1(x)
+    assert e != exp(x) - 1
+    assert e.func(y) == expm1(y)
+    assert e.args == (x,)
+    assert e.subs(x, y) == expm1(y)
+    assert e.diff(x) == exp(x)
+    assert expm1(Integer(0)) == 0
+    assert expm1(Float(0.0)) == expm1(Float(0.0))
+    assert expm1(Integer(1)) == expm1(Integer(1))
+    assert abs(float(expm1(Integer(1)).n(53, real=True)) - 1.718281828459045) < 1e-14
+
+
+def test_hypot():
+    x = Symbol("x")
+    y = Symbol("y")
+    e = hypot(x, y)
+    assert str(e) == "hypot(x, y)"
+    assert e.args == (x, y)
+    # SymEngine orders the two arguments canonically
+    assert hypot(y, x) == e
+    assert e.func(y, x) == e
+    assert e.subs(x, 0) == hypot(0, y)
+    assert e.diff(x) == x / hypot(x, y)
+    assert hypot(Integer(0), Integer(0)) == 0
+    # numeric arguments are *not* folded: hypot(3, 4) is a head, not 5
+    assert hypot(Integer(3), Integer(4)) != 5
+    assert abs(float(hypot(Integer(3), Integer(4)).n(53, real=True)) - 5.0) < 1e-15
+    raises(TypeError, lambda: hypot(x))
+
+
+def test_fma():
+    x = Symbol("x")
+    y = Symbol("y")
+    z = Symbol("z")
+    e = fma(x, y, z)
+    assert str(e) == "fma(x, y, z)"
+    assert e.args == (x, y, z)
+    assert e == fma(x, y, z)
+    # argument order is never rewritten
+    assert fma(y, x, z) != e
+    assert e != x * y + z
+    assert e.func(y, x, z) == fma(y, x, z)
+    assert e.subs(z, 0) == fma(x, y, 0)
+    assert e.diff(x) == y
+    assert e.diff(z) == 1
+    # no numeric folding at all, not even for an exact zero
+    assert fma(Integer(0), Integer(0), Integer(0)) == fma(0, 0, 0)
+    assert abs(float(fma(Integer(2), Integer(3), Integer(4)).n(53, real=True)) - 10.0) < 1e-15
+    raises(TypeError, lambda: fma(x, y))
+
+
+def test_numerical_intrinsics_sympify():
+    x = Symbol("x")
+    y = Symbol("y")
+    assert sympify("log1p(x)") == log1p(x)
+    assert sympify("expm1(x)") == expm1(x)
+    assert sympify("hypot(x, y)") == hypot(x, y)
+    assert sympify("fma(x, y, 2)") == fma(x, y, 2)
+    # and inside a larger expression
+    assert sympify("2*log1p(x) + hypot(x, y)") == 2 * log1p(x) + hypot(x, y)
+
+
+def test_numerical_intrinsics_ccode():
+    from symengine import ccode
+    x = Symbol("x")
+    y = Symbol("y")
+    assert ccode(log1p(x)) == "log1p(x)"
+    assert ccode(expm1(x)) == "expm1(x)"
+    assert ccode(hypot(x, y)) == "hypot(x, y)"
+    assert ccode(fma(x, y, 2)) == "fma(x, y, 2)"
+
+
+@unittest.skipUnless(have_sympy, "SymPy not installed")
+def test_numerical_intrinsics_conv_sympy():
+    from sympy.codegen.cfunctions import (log1p as sympy_log1p,
+                                          expm1 as sympy_expm1,
+                                          hypot as sympy_hypot,
+                                          fma as sympy_fma)
+    x = Symbol("x")
+    y = Symbol("y")
+    z = Symbol("z")
+    sx = sympy.Symbol("x")
+    sy = sympy.Symbol("y")
+    sz = sympy.Symbol("z")
+
+    pairs = [
+        (log1p(x), sympy_log1p(sx)),
+        (expm1(x), sympy_expm1(sx)),
+        (hypot(x, y), sympy_hypot(sx, sy)),
+        (fma(x, y, z), sympy_fma(sx, sy, sz)),
+    ]
+    for se_expr, sympy_expr in pairs:
+        assert se_expr._sympy_() == sympy_expr
+        assert sympify(sympy_expr) == se_expr
+
+    # A cfunctions head SymEngine has no class for still round-trips through
+    # the generic PyFunction path rather than raising.
+    from sympy.codegen.cfunctions import log2 as sympy_log2
+    assert sympify(sympy_log2(sx))._sympy_() == sympy_log2(sx)
+
+
+@unittest.skipUnless(have_sympy, "SymPy not installed")
+def test_numerical_intrinsics_sage_not_implemented():
+    x = Symbol("x")
+    y = Symbol("y")
+    for e in (log1p(x), expm1(x), hypot(x, y), fma(x, y, 1)):
+        raises(NotImplementedError, lambda: e._sage_())
