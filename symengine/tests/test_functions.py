@@ -716,10 +716,10 @@ def test_unevaluated_expr():
 # ---------------------------------------------------------------------------
 # Numerical intrinsic heads (log1p, expm1, hypot, fma)
 #
-# These four are deliberately *not* folded for inexact numeric arguments: the
-# head is what a code generator lowers to the corresponding C99 operation, so
-# folding it away would discard the operation being selected.  The tests below
-# pin that policy as well as the ordinary wrapper surface.
+# These four are deliberately *never* folded for numeric arguments, including
+# exact zero: the head is what a code generator lowers to the corresponding C99
+# operation, so folding it away would discard the operation being selected.
+# The tests below pin that policy as well as the ordinary wrapper surface.
 # ---------------------------------------------------------------------------
 
 def test_log1p():
@@ -734,8 +734,10 @@ def test_log1p():
     assert e.free_symbols == {x}
     assert e.subs(x, y) == log1p(y)
     assert e.diff(x) == 1 / (x + 1)
-    # exact zero folds, inexact zero does not (the sign of -0.0 must survive)
-    assert log1p(Integer(0)) == 0
+    # Exact and inexact zero both retain the target-operation head; the sign of
+    # an inexact -0.0 must survive as well.
+    assert str(log1p(Integer(0))) == "log1p(0)"
+    assert log1p(Integer(0)) != 0
     assert log1p(Float(0.0)) == log1p(Float(0.0))
     assert log1p(Float(0.0)) != 0
     # no folding of an inexact argument either
@@ -754,7 +756,8 @@ def test_expm1():
     assert e.args == (x,)
     assert e.subs(x, y) == expm1(y)
     assert e.diff(x) == exp(x)
-    assert expm1(Integer(0)) == 0
+    assert str(expm1(Integer(0))) == "expm1(0)"
+    assert expm1(Integer(0)) != 0
     assert expm1(Float(0.0)) == expm1(Float(0.0))
     assert expm1(Integer(1)) == expm1(Integer(1))
     assert abs(float(expm1(Integer(1)).n(53, real=True)) - 1.718281828459045) < 1e-14
@@ -771,7 +774,8 @@ def test_hypot():
     assert e.func(y, x) == e
     assert e.subs(x, 0) == hypot(0, y)
     assert e.diff(x) == x / hypot(x, y)
-    assert hypot(Integer(0), Integer(0)) == 0
+    assert str(hypot(Integer(0), Integer(0))) == "hypot(0, 0)"
+    assert hypot(Integer(0), Integer(0)) != 0
     # numeric arguments are *not* folded: hypot(3, 4) is a head, not 5
     assert hypot(Integer(3), Integer(4)) != 5
     assert abs(float(hypot(Integer(3), Integer(4)).n(53, real=True)) - 5.0) < 1e-15
