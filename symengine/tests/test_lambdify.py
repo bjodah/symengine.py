@@ -73,20 +73,45 @@ def test_Lambdify():
 def _test_Lambdify_numerical_intrinsics(Lambdify):
     """The whole point of the log1p/expm1/hypot/fma heads is that they survive
     to evaluation, so pin that they lower to the C99 primitives rather than to
-    log(1+x)/exp(x)-1/sqrt(x*x+y*y)/x*y+z.  Near zero the two differ well
-    outside any tolerance a rewritten form could hide behind."""
+    log(1+x) / exp(x)-1 / sqrt(x*x+y*y) / x*y+z.
+
+    The comparisons are exact (``==``), not ``allclose``: a naive re-lowering
+    is only a few ulp away and would hide inside any tolerance.  Every case is
+    picked so that (a) the naive form is provably a *different* double, and
+    (b) the expected value is a single libm call on the same argument, or an
+    exactly representable constant -- never an arithmetic reconstruction of
+    the operation under test.
+    """
     x, y, z = se.symbols('x y z')
     f = Lambdify([x, y, z],
                  [se.log1p(x), se.expm1(x), se.hypot(x, y), se.fma(x, y, z)])
+
+    # log1p / expm1: near zero the naive forms lose the low-order bits.
     tiny = 1e-9
     got = list(f([tiny, 3.0, 4.0]))
-    expected = [math.log1p(tiny), math.expm1(tiny), math.hypot(tiny, 3.0),
-                tiny * 3.0 + 4.0]
-    assert allclose(got, expected, rtol=1e-15, atol=0)
-    # The naive forms lose the low-order bits that log1p/expm1 keep, so a
-    # rewritten lowering would fail the comparison above.
+    assert got[0] == math.log1p(tiny)
+    assert got[1] == math.expm1(tiny)
     assert math.log(1.0 + tiny) != math.log1p(tiny)
     assert math.exp(tiny) - 1.0 != math.expm1(tiny)
+
+    # hypot: sqrt(x*x + y*y) underflows to zero at this scale.  3, 4 and 5
+    # scaled by a power of two stay exactly representable, so the expectation
+    # does not depend on how a particular libm rounds hypot.
+    scale = 2.0 ** -600
+    assert math.sqrt((3.0 * scale) ** 2 + (4.0 * scale) ** 2) == 0.0
+    got = list(f([3.0 * scale, 4.0 * scale, 0.0]))
+    assert got[2] == 5.0 * scale
+
+    # fma: one rounding instead of two.  u*v is exactly 1 - 2**-54, which
+    # rounds to 1.0, so the naive u*v + c cancels to zero while the fused
+    # form keeps -2**-54.
+    u, v = 1.0 + 2.0 ** -27, 1.0 - 2.0 ** -27
+    assert u * v - 1.0 == 0.0
+    expected_fma = (math.fma(u, v, -1.0) if hasattr(math, 'fma')
+                    else -(2.0 ** -54))
+    assert expected_fma == -(2.0 ** -54)
+    got = list(f([u, v, -1.0]))
+    assert got[3] == expected_fma
 
 
 @unittest.skipUnless(have_numpy, "Numpy not installed")
