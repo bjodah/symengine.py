@@ -4,7 +4,8 @@ from symengine import (
     zoo, pi, KroneckerDelta, LeviCivita, erf, erfc, oo, lowergamma, uppergamma, exp,
     loggamma, beta, polygamma, digamma, trigamma, sign, floor, ceiling, conjugate,
     nan, Float, UnevaluatedExpr, FiniteSet, DictBasic, sympify,
-    log1p, expm1, hypot, fma
+    log1p, expm1, hypot, fma,
+    rewrite_as_log, rewrite_as_exp, rewrite_as_sqrt, rewrite_as_mul_add
 )
 from symengine.test_utilities import raises
 
@@ -801,6 +802,18 @@ def test_fma():
     assert fma(Integer(0), Integer(0), Integer(0)) == fma(0, 0, 0)
     assert abs(float(fma(Integer(2), Integer(3), Integer(4)).n(53, real=True)) - 10.0) < 1e-15
     raises(TypeError, lambda: fma(x, y))
+
+
+def test_numerical_intrinsic_algebraic_forms():
+    """Every public C++ ``rewrite_as_*`` member is reachable from Cython."""
+    x = Symbol("x")
+    y = Symbol("y")
+    z = Symbol("z")
+    assert rewrite_as_log(log1p(x)) == log(x + 1)
+    assert rewrite_as_exp(expm1(x)) == exp(x) - 1
+    assert rewrite_as_sqrt(hypot(x, y)) == sqrt(x**2 + y**2)
+    assert rewrite_as_mul_add(fma(x, y, z)) == x*y + z
+    raises(TypeError, lambda: rewrite_as_log(x))
 
 
 def test_numerical_intrinsics_sympify():

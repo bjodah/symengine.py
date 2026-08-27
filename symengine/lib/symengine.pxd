@@ -188,6 +188,10 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
     RCP[const RealMPFR] rcp_static_cast_RealMPFR "SymEngine::rcp_static_cast<const SymEngine::RealMPFR>"(rcp_const_basic &b) nogil
     RCP[const ComplexMPC] rcp_static_cast_ComplexMPC "SymEngine::rcp_static_cast<const SymEngine::ComplexMPC>"(rcp_const_basic &b) nogil
     RCP[const Log] rcp_static_cast_Log "SymEngine::rcp_static_cast<const SymEngine::Log>"(rcp_const_basic &b) nogil
+    RCP[const Log1p] rcp_static_cast_Log1p "SymEngine::rcp_static_cast<const SymEngine::Log1p>"(rcp_const_basic &b) nogil
+    RCP[const Expm1] rcp_static_cast_Expm1 "SymEngine::rcp_static_cast<const SymEngine::Expm1>"(rcp_const_basic &b) nogil
+    RCP[const Hypot] rcp_static_cast_Hypot "SymEngine::rcp_static_cast<const SymEngine::Hypot>"(rcp_const_basic &b) nogil
+    RCP[const Fma] rcp_static_cast_Fma "SymEngine::rcp_static_cast<const SymEngine::Fma>"(rcp_const_basic &b) nogil
     RCP[const BooleanAtom] rcp_static_cast_BooleanAtom "SymEngine::rcp_static_cast<const SymEngine::BooleanAtom>"(rcp_const_basic &b) nogil
     RCP[const PyNumber] rcp_static_cast_PyNumber "SymEngine::rcp_static_cast<const SymEngine::PyNumber>"(rcp_const_basic &b) nogil
     RCP[const PyFunction] rcp_static_cast_PyFunction "SymEngine::rcp_static_cast<const SymEngine::PyFunction>"(rcp_const_basic &b) nogil
@@ -608,16 +612,16 @@ cdef extern from "<symengine/functions.h>" namespace "SymEngine":
         pass
 
     cdef cppclass Log1p(OneArgFunction):
-        pass
+        rcp_const_basic rewrite_as_log() nogil
 
     cdef cppclass Expm1(OneArgFunction):
-        pass
+        rcp_const_basic rewrite_as_exp() nogil
 
     cdef cppclass Hypot(Function):
-        pass
+        rcp_const_basic rewrite_as_sqrt() nogil
 
     cdef cppclass Fma(Function):
-        pass
+        rcp_const_basic rewrite_as_mul_add() nogil
 
 cdef extern from "<symengine/real_mpfr.h>":
     # These come from mpfr.h, but don't include mpfr.h to not break

@@ -103,6 +103,21 @@ SymEngine. For additional verification specific to SymEngine, please refer to
 the [official SymEngine Python bindings repository](https://github.com/symengine/symengine.py)
 for further tests and examples.
 
+## Numerical intrinsic algebraic forms
+
+The retained C99 intrinsic heads have public algebraic forms. Use the
+corresponding `rewrite_as_*` helper on a matching head:
+
+```python
+from symengine import Symbol, fma, rewrite_as_mul_add
+
+x, y, z = (Symbol(name) for name in ("x", "y", "z"))
+assert rewrite_as_mul_add(fma(x, y, z)) == x*y + z
+```
+
+`rewrite_as_log`, `rewrite_as_exp`, and `rewrite_as_sqrt` similarly accept
+only `log1p`, `expm1`, and `hypot` heads, respectively.
+
 ## License
 
 symengine.py is MIT licensed and uses several LGPL, BSD-3, and MIT licensed

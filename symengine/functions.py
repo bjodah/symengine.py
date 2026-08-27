@@ -8,4 +8,5 @@ from .lib.symengine_wrapper import (sin, cos, tan, cot, csc, sec,
     lowergamma, uppergamma, loggamma, beta,
     polygamma, sign, floor, ceiling, 
     conjugate, digamma, trigamma,
-    log1p, expm1, hypot, fma)
+    log1p, expm1, hypot, fma,
+    rewrite_as_log, rewrite_as_exp, rewrite_as_sqrt, rewrite_as_mul_add)

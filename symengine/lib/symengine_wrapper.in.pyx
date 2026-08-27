@@ -2774,6 +2774,46 @@ class fma(Function):
     def _sage_(self):
         raise NotImplementedError("Sage has no fma counterpart")
 
+
+# Keep the legacy Cython surface parallel with the generated bindings: these
+# public free functions take Basic, guard its dynamic head, then call the same
+# typed C++ members. The check keeps the static RCP cast safe and gives callers
+# a useful TypeError for an ordinary expression such as Symbol("x").
+def rewrite_as_log(Basic expr):
+    """Return ``log(1 + x)`` from a :class:`log1p` intrinsic head."""
+    if not symengine.is_a[symengine.Log1p](deref(expr.thisptr.get())):
+        raise TypeError("rewrite_as_log() requires a log1p expression")
+    cdef RCP[const symengine.Log1p] X = \
+        symengine.rcp_static_cast_Log1p(expr.thisptr.as_rcp())
+    return c2py(deref(X).rewrite_as_log())
+
+
+def rewrite_as_exp(Basic expr):
+    """Return ``exp(x) - 1`` from an :class:`expm1` intrinsic head."""
+    if not symengine.is_a[symengine.Expm1](deref(expr.thisptr.get())):
+        raise TypeError("rewrite_as_exp() requires an expm1 expression")
+    cdef RCP[const symengine.Expm1] X = \
+        symengine.rcp_static_cast_Expm1(expr.thisptr.as_rcp())
+    return c2py(deref(X).rewrite_as_exp())
+
+
+def rewrite_as_sqrt(Basic expr):
+    """Return ``sqrt(x**2 + y**2)`` from a :class:`hypot` intrinsic head."""
+    if not symengine.is_a[symengine.Hypot](deref(expr.thisptr.get())):
+        raise TypeError("rewrite_as_sqrt() requires a hypot expression")
+    cdef RCP[const symengine.Hypot] X = \
+        symengine.rcp_static_cast_Hypot(expr.thisptr.as_rcp())
+    return c2py(deref(X).rewrite_as_sqrt())
+
+
+def rewrite_as_mul_add(Basic expr):
+    """Return ``a*b + c`` from an :class:`fma` intrinsic head."""
+    if not symengine.is_a[symengine.Fma](deref(expr.thisptr.get())):
+        raise TypeError("rewrite_as_mul_add() requires an fma expression")
+    cdef RCP[const symengine.Fma] X = \
+        symengine.rcp_static_cast_Fma(expr.thisptr.as_rcp())
+    return c2py(deref(X).rewrite_as_mul_add())
+
 class sin(TrigFunction):
     def __new__(cls, x):
         cdef Basic X = sympify(x)
