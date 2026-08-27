@@ -52,8 +52,15 @@ cdef object c2py(rcp_const_basic o):
     cdef Basic r
     cdef PyObject *obj
     obj = <PyObject *>deref(o).self_external()
-    if obj != NULL:
+    if obj != NULL and (
+        not deref(o).is_immortal() or isinstance(<object>obj, Basic)
+    ):
         return <object>obj
+    # Immortal native objects may have one facade per cooperative binding.
+    # A wrapper from another extension is not usable as this extension's Basic,
+    # so construct a local facade below. PyBasicHolder::externalize() retains
+    # the foreign owner as delegate_ while the immortal C++ object itself can
+    # never disappear. Mortal objects keep the single-owner identity rule.
     if (symengine.is_a[symengine.Add](deref(o))):
         r = Expr.__new__(Add)
     elif (symengine.is_a[symengine.Mul](deref(o))):
@@ -249,14 +256,24 @@ cdef object c2py(rcp_const_basic o):
     elif (symengine.is_a[symengine.Interval](deref(o))):
         r = Set.__new__(Interval)
     elif (symengine.is_a[symengine.EmptySet](deref(o))):
+        if empty_set_singleton is not None:
+            return empty_set_singleton
         r = Set.__new__(EmptySet)
     elif (symengine.is_a[symengine.Reals](deref(o))):
+        if reals_singleton is not None:
+            return reals_singleton
         r = Set.__new__(Reals)
     elif (symengine.is_a[symengine.Integers](deref(o))):
+        if integers_singleton is not None:
+            return integers_singleton
         r = Set.__new__(Integers)
     elif (symengine.is_a[symengine.Rationals](deref(o))):
+        if rationals_singleton is not None:
+            return rationals_singleton
         r = Set.__new__(Rationals)
     elif (symengine.is_a[symengine.UniversalSet](deref(o))):
+        if universal_set_singleton is not None:
+            return universal_set_singleton
         r = Set.__new__(UniversalSet)
     elif (symengine.is_a[symengine.FiniteSet](deref(o))):
         r = Set.__new__(FiniteSet)
@@ -5742,23 +5759,40 @@ def interval(start, end, left_open=False, right_open=False):
     return c2py(symengine.interval(n1, n2, left_open_, right_open_))
 
 
+empty_set_singleton = None
+universal_set_singleton = None
+reals_singleton = None
+rationals_singleton = None
+integers_singleton = None
+
+
 def emptyset():
+    if empty_set_singleton is not None:
+        return empty_set_singleton
     return c2py(<rcp_const_basic>(symengine.emptyset()))
 
 
 def universalset():
+    if universal_set_singleton is not None:
+        return universal_set_singleton
     return c2py(<rcp_const_basic>(symengine.universalset()))
 
 
 def reals():
+    if reals_singleton is not None:
+        return reals_singleton
     return c2py(<rcp_const_basic>(symengine.reals()))
 
 
 def rationals():
+    if rationals_singleton is not None:
+        return rationals_singleton
     return c2py(<rcp_const_basic>(symengine.rationals()))
 
 
 def integers():
+    if integers_singleton is not None:
+        return integers_singleton
     return c2py(<rcp_const_basic>(symengine.integers()))
 
 

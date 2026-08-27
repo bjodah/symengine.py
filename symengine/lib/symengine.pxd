@@ -150,6 +150,7 @@ cdef extern from "<symengine/basic.h>" namespace "SymEngine":
         vec_basic get_args() nogil
         int __cmp__(const Basic &o) nogil
         void* self_external() noexcept
+        bint is_immortal() noexcept
 
     ctypedef RCP[const Number] rcp_const_number "SymEngine::RCP<const SymEngine::Number>"
     ctypedef unordered_map[int, rcp_const_basic] umap_int_basic "SymEngine::umap_int_basic"
