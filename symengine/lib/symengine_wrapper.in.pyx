@@ -5548,7 +5548,8 @@ IF HAVE_SYMENGINE_LLVM:
 
         cdef _load(self, const string &s):
             self.lambda_visitor.reset(new symengine.LLVMDoubleVisitor())
-            deref(self.lambda_visitor).loads(s)
+            deref(self.lambda_visitor).loads(
+                s, self.args_size, self.tot_out_size)
 
         def __reduce__(self):
             """
@@ -5607,7 +5608,8 @@ IF HAVE_SYMENGINE_LLVM:
 
         cdef _load(self, const string &s):
             self.lambda_visitor.reset(new symengine.LLVMFloatVisitor())
-            deref(self.lambda_visitor).loads(s)
+            deref(self.lambda_visitor).loads(
+                s, self.args_size, self.tot_out_size)
 
         def __reduce__(self):
             """
@@ -5639,7 +5641,8 @@ IF HAVE_SYMENGINE_LLVM:
 
             cdef _load(self, const string &s):
                 self.lambda_visitor.reset(new symengine.LLVMLongDoubleVisitor())
-                deref(self.lambda_visitor).loads(s)
+                deref(self.lambda_visitor).loads(
+                    s, self.args_size, self.tot_out_size)
 
             def __reduce__(self):
                 """

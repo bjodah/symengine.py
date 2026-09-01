@@ -909,7 +909,8 @@ cdef extern from "<symengine/llvm_double.h>" namespace "SymEngine":
         LLVMVisitor() nogil
         void init(const vec_basic &x, const vec_basic &b, bool cse, int opt_level) except + nogil
         const string& dumps() nogil
-        void loads(const string&) nogil
+        void loads(const string&) except + nogil
+        void loads(const string&, size_t, size_t) except + nogil
 
     cdef cppclass LLVMFloatVisitor(LLVMVisitor):
         void call(float *r, const float *x) nogil
