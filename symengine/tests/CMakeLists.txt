@@ -13,6 +13,7 @@ install(
     test_ntheory.py
     test_number.py
     test_pickling.py
+    test_pickling_llvm_artifact.py
     test_printing.py
     test_sage.py
     test_series_expansion.py

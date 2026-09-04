@@ -58,17 +58,6 @@ def test_llvm_double():
     inp = [1, 2, 3]
     assert np.allclose(l(inp), ll(inp))
 
-    loader, state = l.__reduce__()
-    for index in (0, 1):
-        wrong_shape = list(state)
-        wrong_shape[index] += 1
-        try:
-            loader(*wrong_shape)
-        except ValueError as exc:
-            assert "A5-E019 entry-abi" in str(exc)
-        else:
-            raise AssertionError("LLVM artifact with a wrong shape was accepted")
-
 
 def _check_pickling_roundtrip(arg):
     s2 = pickle.dumps(arg)
