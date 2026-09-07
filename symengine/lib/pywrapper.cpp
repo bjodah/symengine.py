@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <symengine/serialize-cereal.h>
+#include <symengine/utilities/str_cat.h>
 
 #if PY_MAJOR_VERSION >= 3
 #define PyInt_FromLong PyLong_FromLong
@@ -627,12 +628,11 @@ RCP<const Basic> wrapper_loads(const std::string &serialized)
     RCPBasicAwareInputArchive<cereal::PortableBinaryInputArchive> iarchive{iss};
     iarchive(major, minor);
     if (major != SYMENGINE_MAJOR_VERSION or minor != SYMENGINE_MINOR_VERSION) {
-        throw SerializationError(StreamFmt()
-                                 << "SymEngine-" << SYMENGINE_MAJOR_VERSION
-                                 << "." << SYMENGINE_MINOR_VERSION
-                                 << " was asked to deserialize an object "
-                                 << "created using SymEngine-" << major << "."
-                                 << minor << ".");
+        throw SerializationError(detail::str_cat(
+            "SymEngine-", int(SYMENGINE_MAJOR_VERSION), ".",
+            int(SYMENGINE_MINOR_VERSION),
+            " was asked to deserialize an object created using SymEngine-",
+            int(major), ".", int(minor), "."));
     }
     iarchive(obj);
     return obj;
