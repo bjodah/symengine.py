@@ -561,9 +561,14 @@ def test_expint_ei():
     # Old: n() was expected to refuse. It requests symbolic evalf, which
     # approximates the argument and keeps Ei; only numeric modes must refuse.
     assert expint_ei(1).n() == expint_ei(Float(1.0))
-    raises(NotImplementedError, lambda: expint_ei(1).n(real=True))
-    raises(NotImplementedError, lambda: expint_ei(1).n(real=False))
-    raises(NotImplementedError, lambda: ccode(e))
+    # Cython's existing `except +` maps native NotImplementedError to
+    # RuntimeError, unlike the Python-level conversion refusals below.
+    with pytest.raises(RuntimeError, match="Not Implemented"):
+        expint_ei(1).n(real=True)
+    with pytest.raises(RuntimeError, match="Not Implemented"):
+        expint_ei(1).n(real=False)
+    with pytest.raises(RuntimeError, match="Code generation for ExpIntegralEi"):
+        ccode(e)
 
 
 def test_erfc():
