@@ -584,9 +584,12 @@ def test_erf():
 def test_expint_ei_conversion_not_qualified():
     x = Symbol("x")
     sx = sympy.Symbol("x")
-    raises(SympifyError, lambda: sympify(sympy.Ei(sx)))
-    raises(NotImplementedError, lambda: expint_ei(x)._sympy_())
-    raises(NotImplementedError, lambda: expint_ei(x)._sage_())
+    with pytest.raises(SympifyError):
+        sympify(sympy.Ei(sx))
+    with pytest.raises(NotImplementedError):
+        expint_ei(x)._sympy_()
+    with pytest.raises(NotImplementedError):
+        expint_ei(x)._sage_()
 
 
 @unittest.skipIf(not have_sympy, "SymPy not installed")

@@ -558,8 +558,11 @@ def test_expint_ei():
         assert isinstance(retained, expint_ei)
         assert retained.args == (sympify(arg),)
 
-    # No numeric backend is licensed to choose an Ei branch yet.
-    raises(NotImplementedError, lambda: expint_ei(1).n())
+    # Old: n() was expected to refuse. It requests symbolic evalf, which
+    # approximates the argument and keeps Ei; only numeric modes must refuse.
+    assert expint_ei(1).n() == expint_ei(Float(1.0))
+    raises(NotImplementedError, lambda: expint_ei(1).n(real=True))
+    raises(NotImplementedError, lambda: expint_ei(1).n(real=False))
     raises(NotImplementedError, lambda: ccode(e))
 
 
