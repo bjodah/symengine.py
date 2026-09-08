@@ -1,4 +1,5 @@
-from symengine import symbols, sin, sinh, have_numpy, have_llvm, cos, Symbol, Dummy
+from symengine import (symbols, sin, sinh, have_numpy, have_llvm, cos, Symbol,
+                       Dummy, expint_ei)
 from symengine.test_utilities import raises
 import pickle
 import unittest
@@ -72,3 +73,4 @@ def test_pickling_roundtrip():
     _check_pickling_roundtrip(x+y)
     _check_pickling_roundtrip(Dummy('d'))
     _check_pickling_roundtrip(Dummy('d') - z)
+    _check_pickling_roundtrip(expint_ei(x + y))

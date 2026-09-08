@@ -217,6 +217,8 @@ cdef object c2py(rcp_const_basic o):
         r = Function.__new__(KroneckerDelta)
     elif (symengine.is_a[symengine.LeviCivita](deref(o))):
         r = Function.__new__(LeviCivita)
+    elif (symengine.is_a[symengine.ExpIntegralEi](deref(o))):
+        r = Function.__new__(expint_ei)
     elif (symengine.is_a[symengine.Erf](deref(o))):
         r = Function.__new__(erf)
     elif (symengine.is_a[symengine.Erfc](deref(o))):
@@ -461,6 +463,10 @@ def sympy2symengine(a, raise_error=False):
         return KroneckerDelta(*a.args)
     elif isinstance(a, sympy.LeviCivita):
         return LeviCivita(*a.args)
+    elif isinstance(a, sympy.Ei):
+        raise SympifyError(
+            "SymPy Ei conversion is not supported: its branch convention has "
+            "not been qualified against SymEngine expint_ei")
     elif isinstance(a, sympy.erf):
         return erf(a.args[0])
     elif isinstance(a, sympy.erfc):
@@ -2592,6 +2598,28 @@ class LeviCivita(Function):
     def _sympy_(self):
         import sympy
         return sympy.LeviCivita(*self.args_as_sympy())
+
+class expint_ei(OneArgFunction):
+    """Symbolic exponential integral Ei with SymEngine's branch convention.
+
+    The native head retains every argument, including singular and inexact
+    values. Its negative-real-axis value is the symmetric cut value. Numeric
+    evaluation and external Ei conversions are unavailable until their branch
+    conventions are qualified.
+    """
+    def __new__(cls, x):
+        cdef Basic X = sympify(x)
+        return c2py(symengine.expint_ei(X.thisptr.as_rcp()))
+
+    def _sympy_(self):
+        raise NotImplementedError(
+            "SymEngine expint_ei cannot be converted to SymPy Ei until their "
+            "branch conventions are qualified")
+
+    def _sage_(self):
+        raise NotImplementedError(
+            "SymEngine expint_ei cannot be converted to Sage Ei until their "
+            "branch conventions are qualified")
 
 class erf(OneArgFunction):
     def __new__(cls, x):

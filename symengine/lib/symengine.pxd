@@ -420,6 +420,7 @@ cdef extern from "<symengine/functions.h>" namespace "SymEngine":
     cdef rcp_const_basic dirichlet_eta(rcp_const_basic &s) except + nogil
     cdef rcp_const_basic kronecker_delta(rcp_const_basic &i, rcp_const_basic &j) except + nogil
     cdef rcp_const_basic levi_civita(const vec_basic &arg) except + nogil
+    cdef rcp_const_basic expint_ei(rcp_const_basic &arg) except + nogil
     cdef rcp_const_basic erf(rcp_const_basic &arg) except + nogil
     cdef rcp_const_basic erfc(rcp_const_basic &arg) except + nogil
     cdef rcp_const_basic lowergamma(rcp_const_basic &s, rcp_const_basic &x) except + nogil
@@ -570,6 +571,9 @@ cdef extern from "<symengine/functions.h>" namespace "SymEngine":
         pass
 
     cdef cppclass LeviCivita(Function):
+        pass
+
+    cdef cppclass ExpIntegralEi(OneArgFunction):
         pass
 
     cdef cppclass Erf(OneArgFunction):

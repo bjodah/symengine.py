@@ -1,7 +1,7 @@
 from symengine import (
     Symbol, sin, cos, sqrt, Add, Mul, function_symbol, Integer, log, E, symbols, I,
     Rational, EulerGamma, Function, Subs, Derivative, LambertW, zeta, dirichlet_eta,
-    zoo, pi, KroneckerDelta, LeviCivita, erf, erfc, oo, lowergamma, uppergamma, exp,
+    zoo, pi, KroneckerDelta, LeviCivita, expint_ei, erf, erfc, oo, lowergamma, uppergamma, exp,
     loggamma, beta, polygamma, digamma, trigamma, sign, floor, ceiling, conjugate,
     nan, Float, UnevaluatedExpr, FiniteSet, DictBasic, sympify,
     log1p, expm1, hypot, fma,
@@ -531,6 +531,36 @@ def test_erf():
     assert erf(-2) == -erf(2)
     assert erf(-x*y) == -erf(x*y)
     assert erf(-x - y) == -erf(x + y)
+
+
+def test_expint_ei():
+    from symengine import ccode
+
+    x = Symbol("x")
+    y = Symbol("y")
+    e = expint_ei(x)
+    assert isinstance(e, expint_ei)
+    assert str(e) == "expint_ei(x)"
+    assert e == expint_ei(x)
+    assert e != expint_ei(y)
+    assert e.func(y) == expint_ei(y)
+    assert e.args == (x,)
+    assert e.get_arg() == x
+    assert e.free_symbols == {x}
+    assert e.subs(x, y) == expint_ei(y)
+    assert e.diff(x) == exp(x) / x
+    assert e.diff(y) == 0
+    assert sympify("expint_ei(x)") == e
+
+    # The native head deliberately retains exceptional and inexact arguments.
+    for arg in (0, oo, -oo, zoo, nan, Float(0.5)):
+        retained = expint_ei(arg)
+        assert isinstance(retained, expint_ei)
+        assert retained.args == (sympify(arg),)
+
+    # No numeric backend is licensed to choose an Ei branch yet.
+    raises(NotImplementedError, lambda: expint_ei(1).n())
+    raises(NotImplementedError, lambda: ccode(e))
 
 
 def test_erfc():

@@ -6,7 +6,7 @@ from symengine import (Symbol, Integer, sympify, SympifyError, log,
         Catalan, EulerGamma, UnevaluatedExpr, RealDouble)
 from symengine.lib.symengine_wrapper import (Subs, Derivative, RealMPFR,
         ComplexMPC, PyNumber, Function, LambertW, zeta, dirichlet_eta,
-        KroneckerDelta, LeviCivita, erf, erfc, lowergamma, uppergamma,
+        KroneckerDelta, LeviCivita, expint_ei, erf, erfc, lowergamma, uppergamma,
         loggamma, beta, polygamma, sign, floor, ceiling, conjugate, And,
         Or, Not, Xor, Piecewise, Interval, EmptySet, FiniteSet, Contains,
         Union, Complement, UniversalSet, Reals, Rationals, Integers,
@@ -578,6 +578,15 @@ def test_erf():
     e2 = erf(x)
     assert sympify(e1) == e2
     assert e2._sympy_() == e1
+
+
+@unittest.skipIf(not have_sympy, "SymPy not installed")
+def test_expint_ei_conversion_not_qualified():
+    x = Symbol("x")
+    sx = sympy.Symbol("x")
+    raises(SympifyError, lambda: sympify(sympy.Ei(sx)))
+    raises(NotImplementedError, lambda: expint_ei(x)._sympy_())
+    raises(NotImplementedError, lambda: expint_ei(x)._sage_())
 
 
 @unittest.skipIf(not have_sympy, "SymPy not installed")
