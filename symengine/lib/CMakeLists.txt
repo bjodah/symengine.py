@@ -66,6 +66,10 @@ target_link_libraries(
   PRIVATE
     ${SYMENGINE_LIBRARIES}
 )
+# SymEngine's exported link list includes direct shared dependencies (notably
+# FLINT). Preserve their non-system link directories in the installed module:
+# libsymengine's RUNPATH cannot resolve the module's own DT_NEEDED entries.
+set_target_properties(symengine_wrapper PROPERTIES INSTALL_RPATH_USE_LINK_PATH ON)
 target_include_directories(
   symengine_wrapper
   PRIVATE
